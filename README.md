@@ -1,12 +1,13 @@
 ### System SDK Download
-- Ubuntu 20.04 :    
-     https://source.codeaurora.org/external/imx/meta-nxp-desktop/?h=imx-5.10.72-hardknott
-- Yocto-Linux 5.10.72_2.2.0    
-     https://www.nxp.com/design/software/embedded-software/i-mx-software/embedded-linux-for-i-mx-applications-processors:IMXLINUX?   
+- Ubuntu 22.04 :    
+     https://github.com/nxp-imx/meta-nxp-desktop/tree/lf-6.1.22-2.0.0-mickledore
+
+- Yocto-Linux 6.1.22_2.2.0    
+     repo init -u https://github.com/nxp-imx/imx-manifest -b imx-linux-mickledore -m imx-6.1.22-2.0.0.xml
    
-### Modify sources/meta-imx/meta-bsp/recipes-bsp/u-boot/u-boot-imx_2021.04.bb
+### Modify sources/meta-imx/meta-bsp/recipes-bsp/u-boot/u-boot-imx-common_2023.04.inc
     UBOOT_SRC ?= "git://github.com/debix-tech/uboot.git;protocol=https"
-    SRCREV = "1a87b972fac74699482e2dce2023b66358d8c4f5"
+    SRCREV = "last commit id"
 
 ### Build yocto
     DISTRO=imx-desktop-xwayland MACHINE=imx8mpevk source imx-setup-desktop.sh -b debix-desktop
