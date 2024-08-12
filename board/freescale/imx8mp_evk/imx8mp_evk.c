@@ -30,8 +30,10 @@
 
 DECLARE_GLOBAL_DATA_PTR;
 
-#define UART_PAD_CTRL	(PAD_CTL_DSE6 | PAD_CTL_FSEL1)
+#define UART_PAD_CTRL	(PAD_CTL_DSE6 | PAD_CTL_FSEL1 | PAD_CTL_PUE | PAD_CTL_PE) //John_gao add for uart put up 
 #define WDOG_PAD_CTRL	(PAD_CTL_DSE6 | PAD_CTL_ODE | PAD_CTL_PUE | PAD_CTL_PE)
+
+
 
 static iomux_v3_cfg_t const uart_pads[] = {
 	MX8MP_PAD_UART2_RXD__UART2_DCE_RX | MUX_PAD_CTRL(UART_PAD_CTRL),
@@ -414,20 +416,73 @@ int board_typec_get_mode(int index)
 #endif
 #endif
 
+#define LED_PAD IMX_GPIO_NR(3, 16)
+static iomux_v3_cfg_t const led_pads[] = {
+	MX8MP_PAD_NAND_READY_B__GPIO3_IO16 | MUX_PAD_CTRL(NO_PAD_CTRL),
+};
+static void setup_led(void)
+{
+	imx_iomux_v3_setup_multiple_pads(led_pads,
+					 ARRAY_SIZE(led_pads));
+
+	gpio_request(LED_PAD, "led_en");
+	gpio_direction_output(LED_PAD, 1);
+	
+}
+
+#ifdef CONFIG_FEC_MXC
+#define FEC_RST_PAD IMX_GPIO_NR(4, 19)
+static iomux_v3_cfg_t const fec1_rst_pads[] = {
+	MX8MP_PAD_SAI1_TXD7__GPIO4_IO19 | MUX_PAD_CTRL(NO_PAD_CTRL),
+};
+
+
+static void setup_iomux_fec(void)
+{
+	imx_iomux_v3_setup_multiple_pads(fec1_rst_pads,
+					 ARRAY_SIZE(fec1_rst_pads));
+
+	gpio_request(FEC_RST_PAD, "fec1_rst");
+	gpio_direction_output(FEC_RST_PAD, 0);
+	mdelay(15);
+	gpio_direction_output(FEC_RST_PAD, 1);
+	mdelay(100);
+}
+
 static void setup_fec(void)
 {
 	struct iomuxc_gpr_base_regs *gpr =
 		(struct iomuxc_gpr_base_regs *)IOMUXC_GPR_BASE_ADDR;
-
+	setup_iomux_fec();
 	/* Enable RGMII TX clk output */
 	setbits_le32(&gpr->gpr[1], BIT(22));
+}
+#endif
+
+#ifdef CONFIG_DWC_ETH_QOS
+
+#define EQOS_RST_PAD IMX_GPIO_NR(4, 18)
+static iomux_v3_cfg_t const eqos_rst_pads[] = {
+	MX8MP_PAD_SAI1_TXD6__GPIO4_IO18 | MUX_PAD_CTRL(NO_PAD_CTRL),
+};
+
+static void setup_iomux_eqos(void)
+{
+	imx_iomux_v3_setup_multiple_pads(eqos_rst_pads,
+					 ARRAY_SIZE(eqos_rst_pads));
+
+	gpio_request(EQOS_RST_PAD, "eqos_rst");
+	gpio_direction_output(EQOS_RST_PAD, 0);
+	mdelay(15);
+	gpio_direction_output(EQOS_RST_PAD, 1);
+	mdelay(100);
 }
 
 static int setup_eqos(void)
 {
 	struct iomuxc_gpr_base_regs *gpr =
 		(struct iomuxc_gpr_base_regs *)IOMUXC_GPR_BASE_ADDR;
-
+	setup_iomux_eqos();
 	/* set INTF as RGMII, enable RGMII TXC clock */
 	clrsetbits_le32(&gpr->gpr[1],
 			IOMUXC_GPR_GPR1_GPR_ENET_QOS_INTF_SEL_MASK, BIT(16));
@@ -435,6 +490,7 @@ static int setup_eqos(void)
 
 	return set_clk_eqos(ENET_125MHZ);
 }
+#endif
 
 #if CONFIG_IS_ENABLED(NET)
 int board_phy_config(struct phy_device *phydev)
@@ -450,14 +506,15 @@ int board_init(void)
 #ifdef CONFIG_USB_TCPC
 	setup_typec();
 #endif
+	setup_led();
+#ifdef CONFIG_FEC_MXC
+	setup_fec();
+#endif
 
-	if (IS_ENABLED(CONFIG_FEC_MXC)) {
-		setup_fec();
-	}
-
-	if (IS_ENABLED(CONFIG_DWC_ETH_QOS)) {
-		setup_eqos();
-	}
+#ifdef CONFIG_DWC_ETH_QOS
+	/* clock, pin, gpr */
+	setup_eqos();
+#endif
 
 #ifdef CONFIG_NAND_MXS
 	setup_gpmi_nand();

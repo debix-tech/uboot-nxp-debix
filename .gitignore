@@ -5,6 +5,7 @@
 #
 # Normal rules (sorted alphabetically)
 #
+drivers/video/u_boot_logo.S
 .*
 !.checkpatch.conf
 *.a
