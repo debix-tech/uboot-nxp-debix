@@ -1053,7 +1053,6 @@ struct dram_cfg_param ddr_ddrphy_trained_csr[] = {
 
 /* P0 message block paremeter for training firmware */
 struct dram_cfg_param ddr_fsp0_cfg[] = {
-#ifdef CONFIG_IMX8M_LPDDR4_FREQ0_2400MTS
 	{ 0xd0000, 0x0 },
 	{ 0x54003, 0xe88 },
 	{ 0x54004, 0x2 },
