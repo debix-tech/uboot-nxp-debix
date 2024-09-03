@@ -4,7 +4,7 @@
  * Sascha Hauer, Pengutronix
  *
  * (C) Copyright 2009 Freescale Semiconductor, Inc.
- * Copyright 2018 NXP
+ * Copyright 2018-2021 NXP
  */
 
 #include <common.h>
@@ -24,8 +24,7 @@
 #include <asm/arch/mxc_hdmi.h>
 #include <asm/arch/crm_regs.h>
 #include <dm.h>
-#include <dm/uclass-internal.h>
-#include <dm/device-internal.h>
+#include <fsl_sec.h>
 #include <imx_thermal.h>
 #include <mmc.h>
 #include <asm/setup.h>
@@ -393,14 +392,14 @@ static void init_bandgap(void)
 	/*
 	 * On i.MX6ULL,we need to set VBGADJ bits according to the
 	 * REFTOP_TRIM[3:0] in fuse table
-	 *	000 - set REFTOP_VBGADJ[2:0] to 3b'110,
-	 *	110 - set REFTOP_VBGADJ[2:0] to 3b'000,
-	 *	001 - set REFTOP_VBGADJ[2:0] to 3b'001,
-	 *	010 - set REFTOP_VBGADJ[2:0] to 3b'010,
-	 *	011 - set REFTOP_VBGADJ[2:0] to 3b'011,
-	 *	100 - set REFTOP_VBGADJ[2:0] to 3b'100,
-	 *	101 - set REFTOP_VBGADJ[2:0] to 3b'101,
-	 *	111 - set REFTOP_VBGADJ[2:0] to 3b'111,
+	 *	000 - set REFTOP_VBGADJ[2:0] to 3'b000
+	 *	001 - set REFTOP_VBGADJ[2:0] to 3'b001
+	 *	010 - set REFTOP_VBGADJ[2:0] to 3'b010
+	 *	011 - set REFTOP_VBGADJ[2:0] to 3'b011
+	 *	100 - set REFTOP_VBGADJ[2:0] to 3'b100
+	 *	101 - set REFTOP_VBGADJ[2:0] to 3'b101
+	 *	110 - set REFTOP_VBGADJ[2:0] to 3'b110
+	 *	111 - set REFTOP_VBGADJ[2:0] to 3'b111
 	 */
 	if (is_mx6ull()) {
 		val = readl(&fuse->mem0);
@@ -444,56 +443,6 @@ static void noc_setup(void)
 #endif
 
 #ifdef CONFIG_MX6SX
-void vadc_power_up(void)
-{
-	struct iomuxc *iomux = (struct iomuxc *)IOMUXC_BASE_ADDR;
-	u32 val;
-
-	/* csi0 */
-	val = readl(&iomux->gpr[5]);
-	val &= ~IMX6SX_GPR5_CSI1_MUX_CTRL_MASK,
-	val |= IMX6SX_GPR5_CSI1_MUX_CTRL_CVD;
-	writel(val, &iomux->gpr[5]);
-
-	/* Power on vadc analog
-	 * Power down vadc ext power */
-	val = readl(GPC_BASE_ADDR + 0);
-	val &= ~0x60000;
-	writel(val, GPC_BASE_ADDR + 0);
-
-	/* software reset afe  */
-	val = readl(&iomux->gpr[1]);
-	writel(val | 0x80000, &iomux->gpr[1]);
-
-	udelay(10*1000);
-
-	/* Release reset bit  */
-	writel(val & ~0x80000, &iomux->gpr[1]);
-
-	/* Power on vadc ext power */
-	val = readl(GPC_BASE_ADDR + 0);
-	val |= 0x40000;
-	writel(val, GPC_BASE_ADDR + 0);
-}
-
-void vadc_power_down(void)
-{
-	struct iomuxc *iomux = (struct iomuxc *)IOMUXC_BASE_ADDR;
-	u32 val;
-
-	/* Power down vadc ext power
-	 * Power off vadc analog */
-	val = readl(GPC_BASE_ADDR + 0);
-	val &= ~0x40000;
-	val |= 0x20000;
-	writel(val, GPC_BASE_ADDR + 0);
-
-	/* clean csi0 connect to vadc  */
-	val = readl(&iomux->gpr[5]);
-	val &= ~IMX6SX_GPR5_CSI1_MUX_CTRL_MASK,
-	writel(val, &iomux->gpr[5]);
-}
-
 void pcie_power_up(void)
 {
 	set_ldo_voltage(LDO_PU, 1100);	/* Set VDDPU to 1.1V */
@@ -573,7 +522,7 @@ int arch_cpu_init(void)
 		if (val & (0x1 << 16)) {
 			val &= ~(0x1 << 16);
 			writel(val, IOMUXC_BASE_ADDR + 0x4);
-			reset_cpu(0);
+			reset_cpu();
 		}
 	}
 
@@ -645,7 +594,8 @@ int arch_cpu_init(void)
 	if (has_err007805())
 		setbits_le32(&ccm->cscmr1, MXC_CCM_CSCMR1_PER_CLK_SEL_MASK);
 
-	imx_wdog_disable_powerdown(); /* Disable PDE bit of WMCR register */
+	if (!IS_ENABLED(CONFIG_IMX_WATCHDOG))
+		imx_wdog_disable_powerdown(); /* Disable PDE bit of WMCR register */
 
 	if (is_mx6sx())
 		setbits_le32(&ccm->cscdr1, MXC_CCM_CSCDR1_UART_CLK_SEL);
@@ -664,7 +614,17 @@ int arch_cpu_init(void)
 	if (is_mx6dqp())
 		noc_setup();
 #endif
+
+	enable_ca7_smp();
 	configure_tzc380();
+
+	return 0;
+}
+
+int arch_initr_trap(void)
+{
+	if (IS_ENABLED(CONFIG_IMX_WATCHDOG))
+		imx_wdog_disable_powerdown();
 
 	return 0;
 }
@@ -680,8 +640,7 @@ __weak int board_mmc_get_env_dev(int devno)
 
 static int mmc_get_boot_dev(void)
 {
-	struct src *src_regs = (struct src *)SRC_BASE_ADDR;
-	u32 soc_sbmr = readl(&src_regs->sbmr1);
+	u32 soc_sbmr = imx6_src_get_boot_mode();
 	u32 bootsel;
 	int devno;
 
@@ -743,7 +702,7 @@ int board_postclk_init(void)
 	return 0;
 }
 
-#ifdef CONFIG_SERIAL_TAG
+#ifdef CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG
 void get_board_serial(struct tag_serialnr *serialnr)
 {
 	struct ocotp_regs *ocotp = (struct ocotp_regs *)OCOTP_BASE_ADDR;
@@ -853,7 +812,7 @@ void set_wdog_reset(struct wdog_regs *wdog)
 void reset_misc(void)
 {
 #ifndef CONFIG_SPL_BUILD
-#if defined(CONFIG_VIDEO_MXS) && !defined(CONFIG_DM_VIDEO)
+#if defined(CONFIG_VIDEO_MXS) && !defined(CONFIG_VIDEO)
 	lcdif_power_down();
 #endif
 #endif
@@ -997,12 +956,22 @@ static void setup_serial_number(void)
 
 int arch_misc_init(void)
 {
-	struct udevice *dev;
+	if (IS_ENABLED(CONFIG_FSL_CAAM)) {
+		struct udevice *dev;
+		int ret;
 
-	uclass_find_first_device(UCLASS_MISC, &dev);
-	for (; dev; uclass_find_next_device(&dev)) {
-		if (device_probe(dev))
-			continue;
+		ret = uclass_get_device_by_driver(UCLASS_MISC, DM_DRIVER_GET(caam_jr), &dev);
+		if (ret)
+			printf("Failed to initialize caam_jr: %d\n", ret);
+	}
+
+	if (IS_ENABLED(CONFIG_FSL_DCP_RNG)) {
+		struct udevice *dev;
+		int ret;
+
+		ret = uclass_get_device_by_driver(UCLASS_RNG, DM_DRIVER_GET(dcp_rng), &dev);
+		if (ret)
+			printf("Failed to initialize dcp rng: %d\n", ret);
 	}
 
 	setup_serial_number();

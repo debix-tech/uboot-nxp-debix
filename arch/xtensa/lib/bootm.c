@@ -5,6 +5,7 @@
  */
 
 #include <common.h>
+#include <bootm.h>
 #include <bootstage.h>
 #include <command.h>
 #include <cpu_func.h>
@@ -134,8 +135,9 @@ static struct bp_tag *setup_fdt_tag(struct bp_tag *params, void *fdt_start)
  * Boot Linux.
  */
 
-int do_bootm_linux(int flag, int argc, char *argv[], bootm_headers_t *images)
+int do_bootm_linux(int flag, struct bootm_info *bmi)
 {
+	struct bootm_headers *images = bmi->images;
 	struct bp_tag *params, *params_start;
 	ulong initrd_start, initrd_end;
 	char *commandline = env_get("bootargs");
@@ -197,3 +199,15 @@ int do_bootm_linux(int flag, int argc, char *argv[], bootm_headers_t *images)
 	return 1;
 }
 
+static ulong get_sp(void)
+{
+	ulong ret;
+
+	asm("mov %0, a1" : "=r"(ret) : );
+	return ret;
+}
+
+void arch_lmb_reserve(struct lmb *lmb)
+{
+	arch_lmb_reserve_generic(lmb, get_sp(), gd->ram_top, 4096);
+}

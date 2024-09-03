@@ -155,7 +155,6 @@ static int pic32_uart_probe(struct udevice *dev)
 	if (ret < 0)
 		return ret;
 	priv->uartclk = clk_get_rate(&clk);
-	clk_free(&clk);
 
 	/* initialize serial */
 	return pic32_serial_init(priv->base, priv->uartclk, CONFIG_BAUDRATE);
@@ -187,14 +186,14 @@ U_BOOT_DRIVER(pic32_serial) = {
 
 static inline void _debug_uart_init(void)
 {
-	void __iomem *base = (void __iomem *)CONFIG_DEBUG_UART_BASE;
+	void __iomem *base = (void __iomem *)CONFIG_VAL(DEBUG_UART_BASE);
 
 	pic32_serial_init(base, CONFIG_DEBUG_UART_CLOCK, CONFIG_BAUDRATE);
 }
 
 static inline void _debug_uart_putc(int ch)
 {
-	writel(ch, CONFIG_DEBUG_UART_BASE + U_TXR);
+	writel(ch, CONFIG_VAL(DEBUG_UART_BASE) + U_TXR);
 }
 
 DEBUG_UART_FUNCS

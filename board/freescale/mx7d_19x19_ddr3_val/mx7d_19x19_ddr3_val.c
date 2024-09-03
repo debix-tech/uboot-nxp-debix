@@ -54,7 +54,7 @@ DECLARE_GLOBAL_DATA_PTR;
 
 #define SPI_PAD_CTRL (PAD_CTL_DSE_3P3V_49OHM | PAD_CTL_SRE_SLOW | PAD_CTL_HYS)
 
-#ifdef CONFIG_SYS_I2C
+#ifdef CONFIG_SYS_I2C_LEGACY
 #define PC MUX_PAD_CTRL(I2C_PAD_CTRL)
 /* I2C1 for PMIC */
 struct i2c_pads_info i2c_pad_info1 = {
@@ -231,30 +231,6 @@ static iomux_v3_cfg_t const wdog_pads[] = {
 	MX7D_PAD_GPIO1_IO00__WDOG1_WDOG_B | MUX_PAD_CTRL(NO_PAD_CTRL),
 };
 
-#ifdef CONFIG_FEC_MXC
-static iomux_v3_cfg_t const fec2_pads[] = {
-	MX7D_PAD_GPIO1_IO11__ENET1_MDC  | MUX_PAD_CTRL(ENET_PAD_CTRL),
-	MX7D_PAD_GPIO1_IO10__ENET1_MDIO | MUX_PAD_CTRL(ENET_PAD_CTRL),
-	MX7D_PAD_EPDC_SDCE0__ENET2_RGMII_RX_CTL | MUX_PAD_CTRL(ENET_RX_PAD_CTRL),
-	MX7D_PAD_EPDC_SDCLK__ENET2_RGMII_RD0 | MUX_PAD_CTRL(ENET_RX_PAD_CTRL),
-	MX7D_PAD_EPDC_SDLE__ENET2_RGMII_RD1  | MUX_PAD_CTRL(ENET_RX_PAD_CTRL),
-	MX7D_PAD_EPDC_SDOE__ENET2_RGMII_RD2  | MUX_PAD_CTRL(ENET_RX_PAD_CTRL),
-	MX7D_PAD_EPDC_SDSHR__ENET2_RGMII_RD3 | MUX_PAD_CTRL(ENET_RX_PAD_CTRL),
-	MX7D_PAD_EPDC_SDCE1__ENET2_RGMII_RXC | MUX_PAD_CTRL(ENET_RX_PAD_CTRL),
-	MX7D_PAD_EPDC_GDRL__ENET2_RGMII_TX_CTL | MUX_PAD_CTRL(ENET_PAD_CTRL),
-	MX7D_PAD_EPDC_SDCE2__ENET2_RGMII_TD0 | MUX_PAD_CTRL(ENET_PAD_CTRL),
-	MX7D_PAD_EPDC_SDCE3__ENET2_RGMII_TD1 | MUX_PAD_CTRL(ENET_PAD_CTRL),
-	MX7D_PAD_EPDC_GDCLK__ENET2_RGMII_TD2 | MUX_PAD_CTRL(ENET_PAD_CTRL),
-	MX7D_PAD_EPDC_GDOE__ENET2_RGMII_TD3  | MUX_PAD_CTRL(ENET_PAD_CTRL),
-	MX7D_PAD_EPDC_GDSP__ENET2_RGMII_TXC  | MUX_PAD_CTRL(ENET_PAD_CTRL),
-};
-
-static void setup_iomux_fec2(void)
-{
-	imx_iomux_v3_setup_multiple_pads(fec2_pads, ARRAY_SIZE(fec2_pads));
-}
-#endif
-
 static void setup_iomux_uart(void)
 {
 	imx_iomux_v3_setup_multiple_pads(uart1_pads, ARRAY_SIZE(uart1_pads));
@@ -344,7 +320,7 @@ int board_mmc_init(struct bd_info *bis)
 	 * mmc1                    USDHC2
 	 * mmc2                    USDHC3
 	 */
-	for (i = 0; i < CONFIG_SYS_FSL_USDHC_NUM; i++) {
+	for (i = 0; i < CFG_SYS_FSL_USDHC_NUM; i++) {
 		switch (i) {
 		case 0:
 			imx_iomux_v3_setup_multiple_pads(
@@ -386,20 +362,6 @@ int board_mmc_init(struct bd_info *bis)
 #endif
 
 #ifdef CONFIG_FEC_MXC
-int board_eth_init(struct bd_info *bis)
-{
-	int ret;
-
-	setup_iomux_fec2();
-
-	ret = fecmxc_initialize_multi(bis, 0,
-		CONFIG_FEC_MXC_PHYADDR, IMX_FEC_BASE);
-	if (ret)
-		printf("FEC1 MXC: %s:failed\n", __func__);
-
-	return 0;
-}
-
 static int setup_fec(void)
 {
 	struct iomuxc_gpr_base_regs *const iomuxc_gpr_regs
@@ -485,7 +447,7 @@ int board_early_init_f(void)
 {
 	setup_iomux_uart();
 
-#ifdef CONFIG_SYS_I2C
+#ifdef CONFIG_SYS_I2C_LEGACY
 	setup_i2c(0, CONFIG_SYS_I2C_SPEED, 0x7f, &i2c_pad_info1);
 	setup_i2c(1, CONFIG_SYS_I2C_SPEED, 0x7f, &i2c_pad_info2);
 #endif

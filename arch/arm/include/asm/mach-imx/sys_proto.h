@@ -2,7 +2,7 @@
 /*
  * (C) Copyright 2009
  * Stefano Babic, DENX Software Engineering, sbabic@denx.de.
- * Copyright 2018-2020 NXP
+ * Copyright 2018-2023 NXP
  */
 
 #ifndef _SYS_PROTO_H_
@@ -32,6 +32,8 @@ struct bd_info;
 #define is_mx7() (is_soc_type(MXC_SOC_MX7))
 #define is_imx8m() (is_soc_type(MXC_SOC_IMX8M))
 #define is_imx8() (is_soc_type(MXC_SOC_IMX8))
+#define is_imx9() (is_soc_type(MXC_SOC_IMX9))
+#define is_imxrt() (is_soc_type(MXC_SOC_IMXRT))
 
 #define is_mx6dqp() (is_cpu_type(MXC_CPU_MX6QP) || is_cpu_type(MXC_CPU_MX6DP))
 #define is_mx6dq() (is_cpu_type(MXC_CPU_MX6Q) || is_cpu_type(MXC_CPU_MX6D))
@@ -51,7 +53,15 @@ struct bd_info;
 #define is_imx8md() (is_cpu_type(MXC_CPU_IMX8MD))
 #define is_imx8mql() (is_cpu_type(MXC_CPU_IMX8MQL))
 #define is_imx8qm() (is_cpu_type(MXC_CPU_IMX8QM))
-#define is_imx8ulp() (is_cpu_type(MXC_CPU_IMX8ULP))
+#define is_imx8ulp() (is_cpu_type(MXC_CPU_IMX8ULP) || is_cpu_type(MXC_CPU_IMX8ULPD5) || is_cpu_type(MXC_CPU_IMX8ULPS5) || \
+	is_cpu_type(MXC_CPU_IMX8ULPD3) || is_cpu_type(MXC_CPU_IMX8ULPS3) || \
+	is_cpu_type(MXC_CPU_IMX8ULPSC))
+#define is_imx8ulpd7() (is_cpu_type(MXC_CPU_IMX8ULP))
+#define is_imx8ulpd5() (is_cpu_type(MXC_CPU_IMX8ULPD5))
+#define is_imx8ulpd3() (is_cpu_type(MXC_CPU_IMX8ULPD3))
+#define is_imx8ulps5() (is_cpu_type(MXC_CPU_IMX8ULPS5))
+#define is_imx8ulps3() (is_cpu_type(MXC_CPU_IMX8ULPS3))
+#define is_imx8ulpsc() (is_cpu_type(MXC_CPU_IMX8ULPSC))
 #define is_imx8mm() (is_cpu_type(MXC_CPU_IMX8MM) || is_cpu_type(MXC_CPU_IMX8MML) ||\
 	is_cpu_type(MXC_CPU_IMX8MMD) || is_cpu_type(MXC_CPU_IMX8MMDL) || \
 	is_cpu_type(MXC_CPU_IMX8MMS) || is_cpu_type(MXC_CPU_IMX8MMSL))
@@ -73,16 +83,47 @@ struct bd_info;
 #define is_imx8mnud() (is_cpu_type(MXC_CPU_IMX8MNUD))
 #define is_imx8mnus() (is_cpu_type(MXC_CPU_IMX8MNUS))
 #define is_imx8mp() (is_cpu_type(MXC_CPU_IMX8MP)  || is_cpu_type(MXC_CPU_IMX8MPD) || \
-	is_cpu_type(MXC_CPU_IMX8MPL) || is_cpu_type(MXC_CPU_IMX8MP6) || is_cpu_type(MXC_CPU_IMX8MPUL))
+	is_cpu_type(MXC_CPU_IMX8MPL) || is_cpu_type(MXC_CPU_IMX8MP6) || is_cpu_type(MXC_CPU_IMX8MPUL) || \
+	is_cpu_type(MXC_CPU_IMX8MPSC) || is_cpu_type(MXC_CPU_IMX8MPDSC) || is_cpu_type(MXC_CPU_IMX8MP5) || \
+	is_cpu_type(MXC_CPU_IMX8MPD2))
 #define is_imx8mpd() (is_cpu_type(MXC_CPU_IMX8MPD))
+#define is_imx8mpd2() (is_cpu_type(MXC_CPU_IMX8MPD2))
 #define is_imx8mpl() (is_cpu_type(MXC_CPU_IMX8MPL))
+#define is_imx8mp5() (is_cpu_type(MXC_CPU_IMX8MP5))
 #define is_imx8mp6() (is_cpu_type(MXC_CPU_IMX8MP6))
 #define is_imx8mpul() (is_cpu_type(MXC_CPU_IMX8MPUL))
+#define is_imx8mpsc() (is_cpu_type(MXC_CPU_IMX8MPSC))
+#define is_imx8mpdsc() (is_cpu_type(MXC_CPU_IMX8MPDSC))
 
 #define is_imx8qxp() (is_cpu_type(MXC_CPU_IMX8QXP))
 #define is_imx8dxl() (is_cpu_type(MXC_CPU_IMX8DXL))
 
- /* gd->flags reserves high 16 bits for arch-specific flags */
+#define is_imx93() (is_cpu_type(MXC_CPU_IMX93) || is_cpu_type(MXC_CPU_IMX9331) || \
+	is_cpu_type(MXC_CPU_IMX9332) || is_cpu_type(MXC_CPU_IMX9351) || \
+	is_cpu_type(MXC_CPU_IMX9322) || is_cpu_type(MXC_CPU_IMX9321) || \
+	is_cpu_type(MXC_CPU_IMX9312) || is_cpu_type(MXC_CPU_IMX9311) || \
+	is_cpu_type(MXC_CPU_IMX9302) || is_cpu_type(MXC_CPU_IMX9301))
+#define is_imx9351() (is_cpu_type(MXC_CPU_IMX9351))
+#define is_imx9332() (is_cpu_type(MXC_CPU_IMX9332))
+#define is_imx9331() (is_cpu_type(MXC_CPU_IMX9331))
+#define is_imx9322() (is_cpu_type(MXC_CPU_IMX9322))
+#define is_imx9321() (is_cpu_type(MXC_CPU_IMX9321))
+#define is_imx9312() (is_cpu_type(MXC_CPU_IMX9312))
+#define is_imx9311() (is_cpu_type(MXC_CPU_IMX9311))
+#define is_imx9302() (is_cpu_type(MXC_CPU_IMX9302))
+#define is_imx9301() (is_cpu_type(MXC_CPU_IMX9301))
+
+#define is_imx9111() (is_cpu_type(MXC_CPU_IMX9111))
+#define is_imx9101() (is_cpu_type(MXC_CPU_IMX9101))
+#define is_imx91() (is_cpu_type(MXC_CPU_IMX91) || is_cpu_type(MXC_CPU_IMX9111) || \
+	is_cpu_type(MXC_CPU_IMX9101))
+
+#define is_imx95() (is_cpu_type(MXC_CPU_IMX95))
+
+#define is_imxrt1020() (is_cpu_type(MXC_CPU_IMXRT1020))
+#define is_imxrt1050() (is_cpu_type(MXC_CPU_IMXRT1050))
+
+/* gd->flags reserves high 16 bits for arch-specific flags */
 #define GD_FLG_ARCH_IMX_USB_BOOT		0x80000000	 /* Only used for MX6/7, If set, the u-boot is booting from USB serial download */
 
 #ifdef CONFIG_MX6
@@ -90,9 +131,9 @@ struct bd_info;
 #define IMX6_SRC_GPR10_PERSIST_SECONDARY_BOOT	BIT(30)
 
 #define IMX6_BMODE_MASK			GENMASK(7, 0)
-#define	IMX6_BMODE_SHIFT		4
-#define IMX6_BMODE_EMI_MASK		BIT(3)
-#define IMX6_BMODE_EMI_SHIFT		3
+#define IMX6_BMODE_SHIFT		4
+#define IMX6_BMODE_EIM_MASK		BIT(3)
+#define IMX6_BMODE_EIM_SHIFT		3
 #define IMX6_BMODE_SERIAL_ROM_MASK	GENMASK(26, 24)
 #define IMX6_BMODE_SERIAL_ROM_SHIFT	24
 
@@ -107,13 +148,13 @@ enum imx6_bmode_serial_rom {
 	IMX6_BMODE_I2C3,
 };
 
-enum imx6_bmode_emi {
+enum imx6_bmode_eim {
 	IMX6_BMODE_NOR,
 	IMX6_BMODE_ONENAND,
 };
 
 enum imx6_bmode {
-	IMX6_BMODE_EMI,
+	IMX6_BMODE_EIM,
 #if defined(CONFIG_MX6UL) || defined(CONFIG_MX6ULL)
 	IMX6_BMODE_QSPI,
 	IMX6_BMODE_RESERVED,
@@ -147,7 +188,8 @@ struct rproc_att {
 	u32 size; /* size of reg range */
 };
 
-#if defined(CONFIG_IMX8M) || defined(CONFIG_IMX8ULP)
+const struct rproc_att *imx_bootaux_get_hostmap(void);
+
 struct rom_api {
 	u16 ver;
 	u16 tag;
@@ -161,11 +203,20 @@ enum boot_dev_type_e {
 	BT_DEV_TYPE_MMC = 2,
 	BT_DEV_TYPE_NAND = 3,
 	BT_DEV_TYPE_FLEXSPINOR = 4,
+	BT_DEV_TYPE_SPI_NOR = 6,
+	BT_DEV_TYPE_FLEXSPINAND = 8,
 
 	BT_DEV_TYPE_USB = 0xE,
 	BT_DEV_TYPE_MEM_DEV = 0xF,
 
 	BT_DEV_TYPE_INVALID = 0xFF
+};
+
+enum boot_stage_type {
+	BT_STAGE_PRIMARY = 0x6,
+	BT_STAGE_SECONDARY = 0x9,
+	BT_STAGE_RECOVERY = 0xa,
+	BT_STAGE_USB = 0x5,
 };
 
 #define QUERY_ROM_VER		1
@@ -178,9 +229,58 @@ enum boot_dev_type_e {
 #define ROM_API_OKAY		0xF0
 
 extern struct rom_api *g_rom_api;
+extern unsigned long rom_pointer[];
 
-ulong spl_romapi_raw_seekable_read(u32 offset, u32 size,
-                              void *buf);
+ulong spl_romapi_read(u32 offset, u32 size, void *buf);
+ulong spl_romapi_get_uboot_base(u32 image_offset, u32 rom_bt_dev, u32 pagesize);
+
+u32 rom_api_download_image(u8 *dest, u32 offset, u32 size);
+u32 rom_api_query_boot_infor(u32 info_type, u32 *info);
+
+#ifdef CONFIG_SCMI_FIRMWARE
+typedef struct rom_passover
+{
+    uint16_t tag;                   //!< Tag
+    uint8_t  len;                   //!< Fixed value of 0x80
+    uint8_t  ver;                   //!< Version
+    uint32_t boot_mode;             //!< Boot mode
+    uint32_t card_addr_mode;        //!< SD card address mode
+    uint32_t bad_blks_of_img_set0;  //!< NAND bad block count skipped 1
+    uint32_t ap_mu_id;              //!< AP MU ID
+    uint32_t bad_blks_of_img_set1;  //!< NAND bad block count skipped 1
+    uint8_t  boot_stage;            //!< Boot stage
+    uint8_t  img_set_sel;           //!< Image set booted from
+    uint8_t  rsv0[2];               //!< Reserved
+    uint32_t img_set_end;           //!< Offset of Image End
+    uint32_t rom_version;           //!< ROM version
+    uint8_t  boot_dev_state;        //!< Boot device state
+    uint8_t  boot_dev_inst;         //!< Boot device type
+    uint8_t  boot_dev_type;         //!< Boot device instance
+    uint8_t  rsv1;                  //!< Reserved
+    uint32_t dev_page_size;         //!< Boot device page size
+    uint32_t cnt_header_ofs;        //!< Container header offset
+    uint32_t img_ofs;               //!< Image offset
+}  __attribute__ ((packed)) rom_passover_t;
+
+/**
+ * struct scmi_rom_passover_out - Response payload for ROM_PASSOVER_GET command
+ * @status:	SCMI clock ID
+ * @attributes:	Attributes of the targets clock state
+ */
+struct scmi_rom_passover_get_out {
+	u32 status;
+	u32 numPassover;
+	u32 passover[(sizeof(rom_passover_t) + 8) / 4];
+};
+
+#define SCMI_MISC_MAX_CFGNAME    16U
+
+struct scmi_cfg_info_out {
+	u32 status;
+	u32 msel;
+	u8 cfgname[SCMI_MISC_MAX_CFGNAME];
+};
+
 #endif
 
 /* For i.MX ULP */
@@ -236,9 +336,6 @@ int mxs_wait_mask_clr(struct mxs_register_32 *reg, u32 mask, u32 timeout);
 
 void board_late_mmc_env_init(void);
 
-void vadc_power_up(void);
-void vadc_power_down(void);
-
 void pcie_power_up(void);
 void pcie_power_off(void);
 
@@ -251,8 +348,17 @@ unsigned long call_imx_sip_ret2(unsigned long id, unsigned long reg0,
 
 void imx_get_mac_from_fuse(int dev_id, unsigned char *mac);
 
+#if defined(CONFIG_MX6) || defined(CONFIG_MX7) || defined(CONFIG_MX7ULP)
+void enable_ca7_smp(void);
+#endif
+
+enum boot_device get_boot_device(void);
+
 int add_res_mem_dt_node(void *fdt, const char *name, phys_addr_t pa,
 			size_t size);
 int add_dt_path_subnode(void *fdt, const char *path, const char *subnode);
 void configure_tzc380(void);
+
+/* Generate dek blob, return 0 if success, non 0 if fail. */
+int generate_dek_blob(char *data, uint32_t *data_size);
 #endif

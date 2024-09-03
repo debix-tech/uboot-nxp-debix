@@ -9,20 +9,16 @@
 
 #define FSL_FASTBOOT_FB_DEV "mmc"
 
-#ifdef CONFIG_SYS_MALLOC_LEN
-#undef CONFIG_SYS_MALLOC_LEN
-#define CONFIG_SYS_MALLOC_LEN           (32 * SZ_1M)
-#endif
-
-#undef CONFIG_EXTRA_ENV_SETTINGS
+#undef CFG_EXTRA_ENV_SETTINGS
 #undef CONFIG_BOOTCOMMAND
 
-#define CONFIG_EXTRA_ENV_SETTINGS		\
+#define CFG_EXTRA_ENV_SETTINGS		\
 	"splashpos=m,m\0"			\
 	"splashimage=0x90000000\0"		\
 	"fdt_high=0xffffffffffffffff\0"		\
 	"initrd_high=0xffffffffffffffff\0"	\
-	"emmc_dev=0\0"                          \
+	"emmc_dev=0\0"\
+	"sd_dev=2\0"
 
 /* Enable mcu firmware flash */
 #ifdef CONFIG_FLASH_MCUFIRMWARE_SUPPORT
@@ -32,16 +28,13 @@
 #define ANDROID_MCU_FIRMWARE_HEADER_STACK 0x20020000
 #endif
 
-#ifdef CONFIG_DUAL_BOOTLOADER
-#define CONFIG_SYS_SPL_PTE_RAM_BASE    0x801F8000
+#define CFG_SYS_SPL_PTE_RAM_BASE    0x801F8000
 
 #ifdef CONFIG_IMX_TRUSTY_OS
 #define BOOTLOADER_RBIDX_OFFSET  0x3FE000
 #define BOOTLOADER_RBIDX_START   0x3FF000
 #define BOOTLOADER_RBIDX_LEN     0x08
 #define BOOTLOADER_RBIDX_INITVAL 0
-#endif
-
 #endif
 
 #ifdef CONFIG_IMX_TRUSTY_OS

@@ -11,8 +11,10 @@
 #include <clk.h>
 #include <config.h>
 #include <dm.h>
+#include <efi_loader.h>
 #include <env.h>
 #include <env_internal.h>
+#include <fdt_simplefb.h>
 #include <fdt_support.h>
 #include <g_dnl.h>
 #include <generic-phy.h>
@@ -23,7 +25,6 @@
 #include <log.h>
 #include <malloc.h>
 #include <misc.h>
-#include <mtd_node.h>
 #include <net.h>
 #include <netdev.h>
 #include <phy.h>
@@ -37,11 +38,13 @@
 #include <asm/gpio.h>
 #include <asm/arch/stm32.h>
 #include <asm/arch/sys_proto.h>
+#include <dm/ofnode.h>
 #include <jffs2/load_kernel.h>
 #include <linux/bitops.h>
 #include <linux/delay.h>
 #include <linux/err.h>
 #include <linux/iopoll.h>
+#include <linux/printk.h>
 #include <power/regulator.h>
 #include <usb/dwc2_udc.h>
 
@@ -80,15 +83,20 @@
 #define SYSCFG_PMCSETR_ETH_SEL_RGMII	BIT(21)
 #define SYSCFG_PMCSETR_ETH_SEL_RMII	BIT(23)
 
-/*
- * Get a global data pointer
- */
-DECLARE_GLOBAL_DATA_PTR;
-
 #define USB_LOW_THRESHOLD_UV		200000
 #define USB_WARNING_LOW_THRESHOLD_UV	660000
 #define USB_START_LOW_THRESHOLD_UV	1230000
 #define USB_START_HIGH_THRESHOLD_UV	2150000
+
+#if IS_ENABLED(CONFIG_EFI_HAVE_CAPSULE_SUPPORT)
+struct efi_fw_image fw_images[1];
+
+struct efi_capsule_update_info update_info = {
+	.num_images = ARRAY_SIZE(fw_images),
+	.images = fw_images,
+};
+
+#endif /* EFI_HAVE_CAPSULE_SUPPORT */
 
 int board_early_init_f(void)
 {
@@ -105,19 +113,23 @@ int checkboard(void)
 	const char *fdt_compat;
 	int fdt_compat_len;
 
-	if (IS_ENABLED(CONFIG_TFABOOT))
-		mode = "trusted";
-	else
+	if (IS_ENABLED(CONFIG_TFABOOT)) {
+		if (IS_ENABLED(CONFIG_STM32MP15X_STM32IMAGE))
+			mode = "trusted - stm32image";
+		else
+			mode = "trusted";
+	} else {
 		mode = "basic";
+	}
 
-	fdt_compat = fdt_getprop(gd->fdt_blob, 0, "compatible",
-				 &fdt_compat_len);
+	fdt_compat = ofnode_get_property(ofnode_root(), "compatible",
+					 &fdt_compat_len);
 
 	log_info("Board: stm32mp1 in %s mode (%s)\n", mode,
 		 fdt_compat && fdt_compat_len ? fdt_compat : "");
 
 	/* display the STMicroelectronics board identification */
-	if (CONFIG_IS_ENABLED(CMD_STBOARD)) {
+	if (IS_ENABLED(CONFIG_CMD_STBOARD)) {
 		ret = uclass_get_device_by_driver(UCLASS_MISC,
 						  DM_DRIVER_GET(stm32mp_bsec),
 						  &dev);
@@ -155,6 +167,7 @@ static void board_key_check(void)
 					       &gpio, GPIOD_IS_IN)) {
 			log_debug("could not find a /config/st,fastboot-gpios\n");
 		} else {
+			udelay(20);
 			if (dm_gpio_get_value(&gpio)) {
 				log_notice("Fastboot key pressed, ");
 				boot_mode = BOOT_FASTBOOT;
@@ -168,6 +181,7 @@ static void board_key_check(void)
 					       &gpio, GPIOD_IS_IN)) {
 			log_debug("could not find a /config/st,stm32prog-gpios\n");
 		} else {
+			udelay(20);
 			if (dm_gpio_get_value(&gpio)) {
 				log_notice("STM32Programmer key pressed, ");
 				boot_mode = BOOT_STM32PROG;
@@ -190,6 +204,13 @@ int g_dnl_board_usb_cable_connected(void)
 
 	if (!IS_ENABLED(CONFIG_USB_GADGET_DWC2_OTG))
 		return -ENODEV;
+
+	/*
+	 * In case of USB boot device is detected, consider USB cable is
+	 * connected
+	 */
+	if ((get_bootmode() & TAMP_BOOT_DEVICE_MASK) == BOOT_SERIAL_USB)
+		return true;
 
 	/* if typec stusb160x is present, means DK1 or DK2 board */
 	ret = stusb160x_cable_connected();
@@ -229,10 +250,10 @@ int g_dnl_bind_fixup(struct usb_device_descriptor *dev, const char *name)
 
 static int get_led(struct udevice **dev, char *led_string)
 {
-	char *led_name;
+	const char *led_name;
 	int ret;
 
-	led_name = fdtdec_get_config_string(gd->fdt_blob, led_string);
+	led_name = ofnode_conf_read_str(led_string);
 	if (!led_name) {
 		log_debug("could not find %s config string\n", led_string);
 		return -ENOENT;
@@ -279,7 +300,7 @@ static void __maybe_unused led_error_blink(u32 nb_blink)
 			for (i = 0; i < 2 * nb_blink; i++) {
 				led_set_state(led, LEDST_TOGGLE);
 				mdelay(125);
-				WATCHDOG_RESET();
+				schedule();
 			}
 			led_set_state(led, LEDST_ON);
 		}
@@ -347,6 +368,9 @@ static int board_check_usb_power(void)
 	u32 nb_blink;
 	u8 i;
 
+	if (!IS_ENABLED(CONFIG_ADC))
+		return -ENODEV;
+
 	node = ofnode_path("/config");
 	if (!ofnode_valid(node)) {
 		log_debug("no /config node?\n");
@@ -370,11 +394,7 @@ static int board_check_usb_power(void)
 
 	/* perform maximum of 2 ADC measurements to detect power supply current */
 	for (i = 0; i < 2; i++) {
-		if (IS_ENABLED(CONFIG_ADC))
-			ret = adc_measurement(node, adc_count, &min_uV, &max_uV);
-		else
-			ret = -ENODEV;
-
+		ret = adc_measurement(node, adc_count, &min_uV, &max_uV);
 		if (ret)
 			return ret;
 
@@ -485,7 +505,7 @@ static void sysconf_init(void)
 	ret = uclass_get_device_by_driver(UCLASS_PMIC,
 					  DM_DRIVER_GET(stm32mp_pwr_pmic),
 					  &pwr_dev);
-	if (!ret && IS_ENABLED(CONFIG_DM_REGULATOR)) {
+	if (!ret) {
 		ret = uclass_get_device_by_driver(UCLASS_MISC,
 						  DM_DRIVER_GET(stm32mp_bsec),
 						  &dev);
@@ -540,16 +560,13 @@ static void sysconf_init(void)
 	clrbits_le32(syscfg + SYSCFG_CMPCR, SYSCFG_CMPCR_SW_CTRL);
 }
 
-/* Fix to make I2C1 usable on DK2 for touchscreen usage in kernel */
-static int dk2_i2c1_fix(void)
+static int board_stm32mp15x_dk2_init(void)
 {
 	ofnode node;
 	struct gpio_desc hdmi, audio;
 	int ret = 0;
 
-	if (!IS_ENABLED(CONFIG_DM_REGULATOR))
-		return -ENODEV;
-
+	/* Fix to make I2C1 usable on DK2 for touchscreen usage in kernel */
 	node = ofnode_path("/soc/i2c@40012000/hdmi-transmitter@39");
 	if (!ofnode_valid(node)) {
 		log_debug("no hdmi-transmitter@39 ?\n");
@@ -597,18 +614,18 @@ error:
 	return ret;
 }
 
-static bool board_is_dk2(void)
+static bool board_is_stm32mp15x_dk2(void)
 {
-	if (CONFIG_IS_ENABLED(TARGET_ST_STM32MP15x) &&
+	if (CONFIG_IS_ENABLED(TARGET_ST_STM32MP15X) &&
 	    of_machine_is_compatible("st,stm32mp157c-dk2"))
 		return true;
 
 	return false;
 }
 
-static bool board_is_ev1(void)
+static bool board_is_stm32mp15x_ev1(void)
 {
-	if (CONFIG_IS_ENABLED(TARGET_ST_STM32MP15x) &&
+	if (CONFIG_IS_ENABLED(TARGET_ST_STM32MP15X) &&
 	    (of_machine_is_compatible("st,stm32mp157a-ev1") ||
 	     of_machine_is_compatible("st,stm32mp157c-ev1") ||
 	     of_machine_is_compatible("st,stm32mp157d-ev1") ||
@@ -630,7 +647,7 @@ U_BOOT_DRIVER(goodix) = {
 	.of_match	= goodix_ids,
 };
 
-static void board_ev1_init(void)
+static void board_stm32mp15x_ev1_init(void)
 {
 	struct udevice *dev;
 
@@ -641,31 +658,32 @@ static void board_ev1_init(void)
 /* board dependent setup after realloc */
 int board_init(void)
 {
-	/* address of boot parameters */
-	gd->bd->bi_boot_params = STM32_DDR_BASE + 0x100;
-
-	if (CONFIG_IS_ENABLED(DM_GPIO_HOG))
-		gpio_hog_probe_all();
-
 	board_key_check();
 
-	if (board_is_ev1())
-		board_ev1_init();
+	if (board_is_stm32mp15x_ev1())
+		board_stm32mp15x_ev1_init();
 
-	if (board_is_dk2())
-		dk2_i2c1_fix();
+	if (board_is_stm32mp15x_dk2())
+		board_stm32mp15x_dk2_init();
 
-	if (IS_ENABLED(CONFIG_DM_REGULATOR))
-		regulators_enable_boot_on(_DEBUG);
+	regulators_enable_boot_on(_DEBUG);
 
-	if (!IS_ENABLED(CONFIG_TFABOOT))
+	/*
+	 * sysconf initialisation done only when U-Boot is running in secure
+	 * done in TF-A for TFABOOT.
+	 */
+	if (IS_ENABLED(CONFIG_ARMV7_NONSEC))
 		sysconf_init();
-
-	if (CONFIG_IS_ENABLED(LED))
-		led_default_state();
 
 	setup_led(LEDST_ON);
 
+#if IS_ENABLED(CONFIG_EFI_HAVE_CAPSULE_SUPPORT)
+	efi_guid_t image_type_guid = STM32MP_FIP_IMAGE_GUID;
+
+	guidcpy(&fw_images[0].image_type_id, &image_type_guid);
+	fw_images[0].fw_name = u"STM32MP-FIP";
+	fw_images[0].image_index = 1;
+#endif
 	return 0;
 }
 
@@ -681,8 +699,8 @@ int board_late_init(void)
 	int buf_len;
 
 	if (IS_ENABLED(CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG)) {
-		fdt_compat = fdt_getprop(gd->fdt_blob, 0, "compatible",
-					 &fdt_compat_len);
+		fdt_compat = ofnode_get_property(ofnode_root(), "compatible",
+						 &fdt_compat_len);
 		if (fdt_compat && fdt_compat_len) {
 			if (strncmp(fdt_compat, "st,", 3) != 0) {
 				env_set("board_name", fdt_compat);
@@ -734,11 +752,11 @@ int board_interface_eth_init(struct udevice *dev,
 	bool eth_ref_clk_sel_reg = false;
 
 	/* Gigabit Ethernet 125MHz clock selection. */
-	eth_clk_sel_reg = dev_read_bool(dev, "st,eth_clk_sel");
+	eth_clk_sel_reg = dev_read_bool(dev, "st,eth-clk-sel");
 
 	/* Ethernet 50Mhz RMII clock selection */
 	eth_ref_clk_sel_reg =
-		dev_read_bool(dev, "st,eth_ref_clk_sel");
+		dev_read_bool(dev, "st,eth-ref-clk-sel");
 
 	syscfg = (u8 *)syscon_get_first_range(STM32MP_SYSCON_SYSCFG);
 
@@ -813,7 +831,7 @@ enum env_location env_get_location(enum env_operation op, int prio)
 
 	case BOOT_FLASH_NAND:
 	case BOOT_FLASH_SPINAND:
-		if (CONFIG_IS_ENABLED(ENV_IS_IN_UBI))
+		if (IS_ENABLED(CONFIG_ENV_IS_IN_UBI))
 			return ENVL_UBI;
 		else
 			return ENVL_NOWHERE;
@@ -842,6 +860,31 @@ const char *env_ext4_get_intf(void)
 	}
 }
 
+int mmc_get_boot(void)
+{
+	struct udevice *dev;
+	u32 boot_mode = get_bootmode();
+	unsigned int instance = (boot_mode & TAMP_BOOT_INSTANCE_MASK) - 1;
+	char cmd[20];
+	const u32 sdmmc_addr[] = {
+		STM32_SDMMC1_BASE,
+		STM32_SDMMC2_BASE,
+		STM32_SDMMC3_BASE
+	};
+
+	if (instance >= ARRAY_SIZE(sdmmc_addr))
+		return 0;
+
+	/* search associated sdmmc node in devicetree */
+	snprintf(cmd, sizeof(cmd), "mmc@%x", sdmmc_addr[instance]);
+	if (uclass_get_device_by_name(UCLASS_MMC, cmd, &dev)) {
+		log_err("mmc%d = %s not found in device tree!\n", instance, cmd);
+		return 0;
+	}
+
+	return dev_seq(dev);
+};
+
 const char *env_ext4_get_dev_part(void)
 {
 	static char *const env_dev_part =
@@ -855,41 +898,27 @@ const char *env_ext4_get_dev_part(void)
 	if (strlen(env_dev_part) > 0)
 		return env_dev_part;
 
-	u32 bootmode = get_bootmode();
-
-	return dev_part[(bootmode & TAMP_BOOT_INSTANCE_MASK) - 1];
+	return dev_part[mmc_get_boot()];
 }
 
 int mmc_get_env_dev(void)
 {
-	u32 bootmode;
+	const int mmc_env_dev = CONFIG_IS_ENABLED(ENV_IS_IN_MMC, (CONFIG_SYS_MMC_ENV_DEV), (-1));
 
-	if (CONFIG_SYS_MMC_ENV_DEV >= 0)
-		return CONFIG_SYS_MMC_ENV_DEV;
-
-	bootmode = get_bootmode();
+	if (mmc_env_dev >= 0)
+		return mmc_env_dev;
 
 	/* use boot instance to select the correct mmc device identifier */
-	return (bootmode & TAMP_BOOT_INSTANCE_MASK) - 1;
+	return mmc_get_boot();
 }
 
 #if defined(CONFIG_OF_BOARD_SETUP)
 int ft_board_setup(void *blob, struct bd_info *bd)
 {
-	static const struct node_info nodes[] = {
-		{ "st,stm32f469-qspi",		MTD_DEV_TYPE_NOR,  },
-		{ "st,stm32f469-qspi",		MTD_DEV_TYPE_SPINAND},
-		{ "st,stm32mp15-fmc2",		MTD_DEV_TYPE_NAND, },
-		{ "st,stm32mp1-fmc2-nfc",	MTD_DEV_TYPE_NAND, },
-	};
-	char *boot_device;
+	fdt_copy_fixed_partitions(blob);
 
-	/* Check the boot-source and don't update MTD for serial or usb boot */
-	boot_device = env_get("boot_device");
-	if (!boot_device ||
-	    (strcmp(boot_device, "serial") && strcmp(boot_device, "usb")))
-		if (IS_ENABLED(CONFIG_FDT_FIXUP_PARTITIONS))
-			fdt_fixup_mtdparts(blob, nodes, ARRAY_SIZE(nodes));
+	if (IS_ENABLED(CONFIG_FDT_SIMPLEFB))
+		fdt_simplefb_enable_and_mem_rsv(blob);
 
 	return 0;
 }
@@ -915,3 +944,24 @@ static void board_copro_image_process(ulong fw_image, size_t fw_size)
 }
 
 U_BOOT_FIT_LOADABLE_HANDLER(IH_TYPE_COPRO, board_copro_image_process);
+
+#if defined(CONFIG_FWU_MULTI_BANK_UPDATE)
+
+#include <fwu.h>
+
+/**
+ * fwu_plat_get_bootidx() - Get the value of the boot index
+ * @boot_idx: Boot index value
+ *
+ * Get the value of the bank(partition) from which the platform
+ * has booted. This value is passed to U-Boot from the earlier
+ * stage bootloader which loads and boots all the relevant
+ * firmware images
+ *
+ */
+void fwu_plat_get_bootidx(uint *boot_idx)
+{
+	*boot_idx = (readl(TAMP_FWU_BOOT_INFO_REG) >>
+		    TAMP_FWU_BOOT_IDX_OFFSET) & TAMP_FWU_BOOT_IDX_MASK;
+}
+#endif /* CONFIG_FWU_MULTI_BANK_UPDATE */

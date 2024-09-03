@@ -28,6 +28,7 @@
 #include <asm/io.h>
 #include <linux/bitops.h>
 #include <linux/delay.h>
+#include <linux/printk.h>
 
 #define DMA_RX_DESC	6
 #define DMA_TX_DESC	1
@@ -593,12 +594,6 @@ static int bcm6348_iudma_probe(struct udevice *dev)
 		ret = clk_enable(&clk);
 		if (ret < 0) {
 			pr_err("error enabling clock %d\n", i);
-			return ret;
-		}
-
-		ret = clk_free(&clk);
-		if (ret < 0) {
-			pr_err("error freeing clock %d\n", i);
 			return ret;
 		}
 	}

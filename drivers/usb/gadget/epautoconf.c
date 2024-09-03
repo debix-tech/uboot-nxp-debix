@@ -79,12 +79,6 @@ static int ep_matches(
 				 */
 				if ('s' == tmp[2])	/* == "-iso" */
 					return 0;
-				/* for now, avoid PXA "interrupt-in";
-				 * it's documented as never using DATA1.
-				 */
-				if (gadget_is_pxa(gadget)
-						&& 'i' == tmp[1])
-					return 0;
 				break;
 			case USB_ENDPOINT_XFER_BULK:
 				if ('b' != tmp[1])	/* != "-bulk" */
@@ -145,7 +139,7 @@ static int ep_matches(
 	/* report address */
 	desc->bEndpointAddress &= 0xF0;
 	if (isdigit(ep->name[2])) {
-		u8	num = simple_strtoul(&ep->name[2], NULL, 10);
+		u8	num = dectoul(&ep->name[2], NULL);
 		desc->bEndpointAddress |= num;
 #ifdef	MANY_ENDPOINTS
 	} else if (desc->bEndpointAddress & USB_DIR_IN) {

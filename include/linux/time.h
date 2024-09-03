@@ -11,6 +11,15 @@
 
 #define _REENT_ONLY
 
+#define MSEC_PER_SEC	1000L
+#define USEC_PER_MSEC	1000L
+#define NSEC_PER_USEC	1000L
+#define NSEC_PER_MSEC	1000000L
+#define USEC_PER_SEC	1000000L
+#define NSEC_PER_SEC	1000000000L
+#define PSEC_PER_SEC	1000000000000LL
+#define FSEC_PER_SEC	1000000000000000LL
+
 #define SECSPERMIN	60L
 #define MINSPERHOUR	60L
 #define HOURSPERDAY	24L
@@ -151,9 +160,6 @@ _DEFUN (ctime_r, (tim_p, result),
     struct tm tm;
     return asctime_r (localtime_r (tim_p, &tm), result);
 }
-
-/* for compatibility with linux code */
-typedef __s64 time64_t;
 
 #ifdef CONFIG_LIB_DATE
 time64_t mktime64(const unsigned int year, const unsigned int mon,

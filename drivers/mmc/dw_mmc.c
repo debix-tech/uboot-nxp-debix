@@ -166,7 +166,10 @@ static int dwmci_data_transfer(struct dwmci_host *host, struct mmc_data *data)
 		if (host->fifo_mode && size) {
 			len = 0;
 			if (data->flags == MMC_DATA_READ &&
-			    (mask & DWMCI_INTMSK_RXDR)) {
+			    (mask & (DWMCI_INTMSK_RXDR | DWMCI_INTMSK_DTO))) {
+				dwmci_writel(host, DWMCI_RINTSTS,
+					     mask & (DWMCI_INTMSK_RXDR |
+						     DWMCI_INTMSK_DTO));
 				while (size) {
 					ret = dwmci_fifo_ready(host,
 							DWMCI_FIFO_EMPTY,
@@ -182,8 +185,6 @@ static int dwmci_data_transfer(struct dwmci_host *host, struct mmc_data *data)
 						dwmci_readl(host, DWMCI_DATA);
 					size = size > len ? (size - len) : 0;
 				}
-				dwmci_writel(host, DWMCI_RINTSTS,
-					     DWMCI_INTMSK_RXDR);
 			} else if (data->flags == MMC_DATA_WRITE &&
 				   (mask & DWMCI_INTMSK_TXDR)) {
 				while (size) {
@@ -301,7 +302,7 @@ static int dwmci_send_cmd(struct mmc *mmc, struct mmc_cmd *cmd,
 		flags = dwmci_set_transfer_mode(host, data);
 
 	if ((cmd->resp_type & MMC_RSP_136) && (cmd->resp_type & MMC_RSP_BUSY))
-		return -1;
+		return -EBUSY;
 
 	if (cmd->cmdidx == MMC_CMD_STOP_TRANSMISSION)
 		flags |= DWMCI_CMD_ABORT_STOP;
@@ -507,6 +508,10 @@ static int dwmci_set_ios(struct mmc *mmc)
 #if CONFIG_IS_ENABLED(DM_REGULATOR)
 	if (mmc->vqmmc_supply) {
 		int ret;
+
+		ret = regulator_set_enable_if_allowed(mmc->vqmmc_supply, false);
+		if (ret)
+			return ret;
 
 		if (mmc->signal_voltage == MMC_SIGNAL_VOLTAGE_180)
 			regulator_set_value(mmc->vqmmc_supply, 1800000);

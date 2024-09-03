@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright 2018 NXP
+ * Copyright 2018, 2021 NXP
  */
 
 #include <dt-bindings/interrupt-controller/arm-gic.h>
@@ -1413,7 +1413,6 @@
 
 	tsens: thermal-sensor {
 		compatible = "nxp,imx8qxp-sc-tsens";
-		u-boot,dm-pre-reloc;
 		/* number of the temp sensor on the chip */
 		tsens-num = <2>;
 		#thermal-sensor-cells = <1>;
@@ -2566,7 +2565,7 @@
 			<&clk IMX8QXP_GPMI_BCH_CLK>,
 			<&clk IMX8QXP_GPMI_APB_BCH_CLK>,
 			<&clk IMX8QXP_APBHDMA_CLK>;
-		clock-names = "gpmi_io", "gpmi_apb", "gpmi_bch", "gpmi_apb_bch", "gpmi_apbh_dma";
+		clock-names = "gpmi_io", "gpmi_apb", "gpmi_bch", "gpmi_bch_apb", "gpmi_apbh_dma";
 		dmas = <&dma_apbh 0>;
 		dma-names = "rx-tx";
 		power-domains = <&pd_conn_nand>;

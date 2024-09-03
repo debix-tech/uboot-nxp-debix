@@ -61,22 +61,7 @@ void board_final_init(void)
 		debug("OK\n");
 }
 
-void board_final_cleanup(void)
-{
-	u32 status;
-
-	/* TODO(sjg@chromium.org): This causes Linux to crash */
-	return;
-
-	/* call into FspNotify */
-	debug("Calling into FSP (notify phase INIT_PHASE_END_FIRMWARE): ");
-	status = fsp_notify(NULL, INIT_PHASE_END_FIRMWARE);
-	if (status)
-		debug("fail, error code %x\n", status);
-	else
-		debug("OK\n");
-}
-
+#if CONFIG_IS_ENABLED(DM_RTC)
 int fsp_save_s3_stack(void)
 {
 	struct udevice *dev;
@@ -100,3 +85,4 @@ int fsp_save_s3_stack(void)
 
 	return 0;
 }
+#endif

@@ -3,13 +3,12 @@
  * Common internal memory map for some Freescale SoCs
  *
  * Copyright 2014 Freescale Semiconductor, Inc.
- * Copyright 2018, 2021 NXP
+ * Copyright 2018, 2021, 2024 NXP
  */
 
 #ifndef __FSL_SEC_H
 #define __FSL_SEC_H
 
-#include <common.h>
 #include <asm/io.h>
 
 #ifdef CONFIG_SYS_FSL_SEC_LE
@@ -58,8 +57,18 @@ struct rng4tst {
 	u32 rtmctl;		/* misc. control register */
 	u32 rtscmisc;		/* statistical check misc. register */
 	u32 rtpkrrng;		/* poker range register */
-#define RTSDCTL_ENT_DLY_MIN	3200
+#ifdef CONFIG_MX6SX
+#define RTSDCTL_ENT_DLY		12000
+#define RTSDCTL_ENT_DLY_MAX	12000
+#elif CONFIG_IMX8ULP
+#define RTSDCTL_ENT_DLY		25000
+#define RTSDCTL_ENT_DLY_MAX	25000
+#define RTFRQMIN		5000
+#define RTFRQMAX		10000
+#else
+#define RTSDCTL_ENT_DLY		3200
 #define RTSDCTL_ENT_DLY_MAX	12800
+#endif
 	union {
 		u32 rtpkrmax;	/* PRGM=1: poker max. limit register */
 		u32 rtpkrsq;	/* PRGM=0: poker square calc. result register */
@@ -83,7 +92,10 @@ struct rng4tst {
 #define RDSTA_MASK (RDSTA_PR(1) | RDSTA_PR(0) | RDSTA_IF(1) | RDSTA_IF(0))
 #define RDSTA_SKVN 0x40000000
 	u32 rdsta;		/*RNG DRNG Status Register*/
-	u32 rsvd2[15];
+	u32 rsvd2[10];
+#define OSC2_CTL_TRNG_ENT_CTL	1	/* TRNG_ENT_CTL(1-0) = 01 : dual oscillator mode */
+	u32 osc2_ctl;		/* RNG Oscillator 2 Control Register */
+	u32 rsvd3[4];
 };
 
 /* Version registers (Era 10+) */
@@ -199,6 +211,7 @@ typedef struct ccsr_sec {
 #define SEC_SECVID_MS_MAJ_REV_SHIFT	8
 #define SEC_CCBVID_ERA_MASK		0xff000000
 #define SEC_CCBVID_ERA_SHIFT		24
+#define SEC_SCFGR_RANDDPAR		0x00000100
 #define SEC_SCFGR_RDBENABLE		0x00000400
 #define SEC_SCFGR_VIRT_EN		0x00008000
 #define SEC_CHAVID_LS_RNG_SHIFT		16
@@ -282,7 +295,7 @@ struct sg_entry {
 	 defined(CONFIG_MX7ULP) || defined(CONFIG_IMX8M) || defined(CONFIG_IMX8) || \
 	 defined(CONFIG_IMX8ULP)
 /* Job Ring Base Address */
-#define JR_BASE_ADDR(x) (CONFIG_SYS_FSL_SEC_ADDR + 0x1000 * (x + 1))
+#define JR_BASE_ADDR(x) (CFG_SYS_FSL_SEC_ADDR + 0x1000 * (x + 1))
 /* Secure Memory Offset varies accross versions */
 #define SM_V1_OFFSET 0x0f4
 #define SM_V2_OFFSET 0xa00
@@ -297,7 +310,7 @@ struct sg_entry {
 /* JR Allocation Error */
 #define SMCSJR_AERR		(3 << 12)
 /* Secure memory partition 0 page 0 owner register */
-#define CAAM_SMPO_0	    (CONFIG_SYS_FSL_SEC_ADDR + 0x1FBC)
+#define CAAM_SMPO_0	    (CFG_SYS_FSL_SEC_ADDR + 0x1FBC)
 /* Secure memory command register */
 #define CAAM_SMCJR(v, jr)   (JR_BASE_ADDR(jr) + SM_OFFSET(v) + SM_CMD(v))
 /* Secure memory command status register */

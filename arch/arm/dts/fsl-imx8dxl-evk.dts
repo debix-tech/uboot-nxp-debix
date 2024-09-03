@@ -287,7 +287,7 @@
 };
 
 &A35_0 {
-	u-boot,dm-pre-reloc;
+	bootph-all;
 };
 
 &lpuart0 {
@@ -489,10 +489,6 @@
 	fsl,ar8031-phy-fixup;
 	fsl,magic-packet;
 	status = "okay";
-
-	phy-reset-gpios = <&pca6416_a 2 GPIO_ACTIVE_LOW>;
-	phy-reset-duration = <10>;
-	phy-reset-post-delay = <150>;
 
 	mdio {
 		#address-cells = <1>;

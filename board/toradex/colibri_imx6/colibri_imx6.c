@@ -29,6 +29,7 @@
 #include <asm/mach-imx/iomux-v3.h>
 #include <asm/mach-imx/sata.h>
 #include <asm/mach-imx/video.h>
+#include <asm/sections.h>
 #include <cpu.h>
 #include <dm/platform_data/serial_mxc.h>
 #include <fsl_esdhc_imx.h>
@@ -73,7 +74,7 @@ DECLARE_GLOBAL_DATA_PTR;
 int dram_init(void)
 {
 	/* use the DDR controllers configured size */
-	gd->ram_size = get_ram_size((void *)CONFIG_SYS_SDRAM_BASE,
+	gd->ram_size = get_ram_size((void *)CFG_SYS_SDRAM_BASE,
 				    (ulong)imx_ddr_size());
 
 	return 0;
@@ -290,7 +291,7 @@ int board_ehci_hcd_init(int port)
 
 #if defined(CONFIG_FSL_ESDHC_IMX) && defined(CONFIG_SPL_BUILD)
 /* use the following sequence: eMMC, MMC */
-struct fsl_esdhc_cfg usdhc_cfg[CONFIG_SYS_FSL_USDHC_NUM] = {
+struct fsl_esdhc_cfg usdhc_cfg[CFG_SYS_FSL_USDHC_NUM] = {
 	{USDHC3_BASE_ADDR},
 	{USDHC1_BASE_ADDR},
 };
@@ -611,46 +612,29 @@ int board_init(void)
 #ifdef CONFIG_BOARD_LATE_INIT
 int board_late_init(void)
 {
-#if defined(CONFIG_REVISION_TAG) && \
-    defined(CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG)
+#if defined(CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG)
 	char env_str[256];
 	u32 rev;
 
-	rev = get_board_rev();
+	rev = get_board_revision();
 	snprintf(env_str, ARRAY_SIZE(env_str), "%.4x", rev);
 	env_set("board_rev", env_str);
 #endif
 
-#ifdef CONFIG_CMD_USB_SDP
-	if (is_boot_from_usb()) {
-		printf("Serial Downloader recovery mode, using sdp command\n");
+	if (IS_ENABLED(CONFIG_USB) && is_boot_from_usb()) {
 		env_set("bootdelay", "0");
-		env_set("bootcmd", "sdp 0");
+		if (IS_ENABLED(CONFIG_CMD_USB_SDP)) {
+			printf("Serial Downloader recovery mode, using sdp command\n");
+			env_set("bootcmd", "sdp 0");
+		} else if (IS_ENABLED(CONFIG_CMD_FASTBOOT)) {
+			printf("Fastboot recovery mode, using fastboot command\n");
+			env_set("bootcmd", "fastboot usb 0");
+		}
 	}
-#endif /* CONFIG_CMD_USB_SDP */
 
 	return 0;
 }
 #endif /* CONFIG_BOARD_LATE_INIT */
-
-int checkboard(void)
-{
-	char it[] = " IT";
-	int minc, maxc;
-
-	switch (get_cpu_temp_grade(&minc, &maxc)) {
-	case TEMP_AUTOMOTIVE:
-	case TEMP_INDUSTRIAL:
-		break;
-	case TEMP_EXTCOMMERCIAL:
-	default:
-		it[0] = 0;
-	};
-	printf("Model: Toradex Colibri iMX6 %s %sMB%s\n",
-	       is_cpu_type(MXC_CPU_MX6DL) ? "DualLite" : "Solo",
-	       (gd->ram_size == 0x20000000) ? "512" : "256", it);
-	return 0;
-}
 
 #if defined(CONFIG_OF_LIBFDT) && defined(CONFIG_OF_BOARD_SETUP)
 int ft_board_setup(void *blob, struct bd_info *bd)
@@ -768,8 +752,7 @@ MX6_MMDC_P1_MPRDDQBY3DL, 0x33333333,
 /*
  * MDMISC	mirroring	interleaved (row/bank/col)
  */
-/* TODO: check what the RALAT field does */
-MX6_MMDC_P0_MDMISC, 0x00081740,
+MX6_MMDC_P0_MDMISC, 0x000b17c0,
 
 /*
  * MDSCR	con_req
@@ -901,8 +884,7 @@ MX6_MMDC_P1_MPRDDQBY3DL, 0x33333333,
 /*
  * MDMISC	mirroring	interleaved (row/bank/col)
  */
-/* TODO: check what the RALAT field does */
-MX6_MMDC_P0_MDMISC, 0x00081740,
+MX6_MMDC_P0_MDMISC, 0x000b17c0,
 
 /*
  * MDSCR	con_req
@@ -981,13 +963,17 @@ static void ccgr_init(void)
 /*
  * Setup CCM_CCOSR register as follows:
  *
- * cko1_en  = 1	   --> CKO1 enabled
- * cko1_div = 111  --> divide by 8
- * cko1_sel = 1011 --> ahb_clk_root
+ * clko2_en  = 1     --> CKO2 enabled
+ * clko2_div = 000   --> divide by 1
+ * clko2_sel = 01110 --> osc_clk (24MHz)
  *
- * This sets CKO1 at ahb_clk_root/8 = 132/8 = 16.5 MHz
+ * clk_out_sel = 1   --> Output CKO2 to CKO1
+ *
+ * This sets both CLKO2/CLKO1 output to 24MHz,
+ * CLKO1 configuration not relevant because of clk_out_sel
+ * (CLKO1 set to default)
  */
-	writel(0x000000FB, &ccm->ccosr);
+	writel(0x010E0101, &ccm->ccosr);
 }
 
 static void ddr_init(int *table, int size)
@@ -998,9 +984,28 @@ static void ddr_init(int *table, int size)
 		writel(table[2 * i + 1], table[2 * i]);
 }
 
+/* Perform DDR DRAM calibration */
+static void spl_dram_perform_cal(u8 dsize)
+{
+#ifdef CONFIG_MX6_DDRCAL
+	int err;
+	struct mx6_ddr_sysinfo ddr_sysinfo = {
+		.dsize = dsize,
+	};
+
+	err = mmdc_do_write_level_calibration(&ddr_sysinfo);
+	if (err)
+		printf("error %d from write level calibration\n", err);
+	err = mmdc_do_dqs_calibration(&ddr_sysinfo);
+	if (err)
+		printf("error %d from dqs calibration\n", err);
+#endif
+}
+
 static void spl_dram_init(void)
 {
 	int minc, maxc;
+	u8 dsize = 2;
 
 	switch (get_cpu_temp_grade(&minc, &maxc)) {
 	case TEMP_COMMERCIAL:
@@ -1010,6 +1015,7 @@ static void spl_dram_init(void)
 			ddr_init(mx6dl_dcd_table, ARRAY_SIZE(mx6dl_dcd_table));
 		} else {
 			puts("Commercial temperature grade DDR3 timings, 32bit bus width.\n");
+			dsize = 1;
 			ddr_init(mx6s_dcd_table, ARRAY_SIZE(mx6s_dcd_table));
 		}
 		break;
@@ -1021,11 +1027,13 @@ static void spl_dram_init(void)
 			ddr_init(mx6dl_dcd_table, ARRAY_SIZE(mx6dl_dcd_table));
 		} else {
 			puts("Industrial temperature grade DDR3 timings, 32bit bus width.\n");
+			dsize = 1;
 			ddr_init(mx6s_dcd_table, ARRAY_SIZE(mx6s_dcd_table));
 		}
 		break;
 	};
 	udelay(100);
+	spl_dram_perform_cal(dsize);
 }
 
 static iomux_v3_cfg_t const gpio_reset_pad[] = {
@@ -1081,7 +1089,17 @@ void board_init_f(ulong dummy)
 	board_init_r(NULL, 0);
 }
 
-void reset_cpu(ulong addr)
+#ifdef CONFIG_SPL_LOAD_FIT
+int board_fit_config_name_match(const char *name)
+{
+	if (!strcmp(name, "imx6-colibri"))
+		return 0;
+
+	return -1;
+}
+#endif
+
+void reset_cpu(void)
 {
 }
 

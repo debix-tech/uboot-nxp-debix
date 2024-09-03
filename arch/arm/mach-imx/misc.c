@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright 2013 Stefan Roese <sr@denx.de>
- * Copyright 2018 NXP
  */
 
 #include <common.h>
@@ -14,6 +13,9 @@
 #include <asm/io.h>
 #include <asm/mach-imx/regs-common.h>
 #include <fdt_support.h>
+#include <linux/psci.h>
+#include <dm.h>
+#include <command.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -78,36 +80,6 @@ int mxs_reset_block(struct mxs_register_32 *reg)
 		return 1;
 
 	return 0;
-}
-
-static ulong get_sp(void)
-{
-	ulong ret;
-
-	asm("mov %0, sp" : "=r"(ret) : );
-	return ret;
-}
-
-void board_lmb_reserve(struct lmb *lmb)
-{
-	ulong sp, bank_end;
-	int bank;
-
-	sp = get_sp();
-	debug("## Current stack ends at 0x%08lx ", sp);
-
-	/* adjust sp by 16K to be safe */
-	sp -= 4096 << 2;
-	for (bank = 0; bank < CONFIG_NR_DRAM_BANKS; bank++) {
-		if (sp < gd->bd->bi_dram[bank].start)
-			continue;
-		bank_end = gd->bd->bi_dram[bank].start +
-			gd->bd->bi_dram[bank].size;
-		if (sp >= bank_end)
-			continue;
-		lmb_reserve(lmb, sp, bank_end - sp);
-		break;
-	}
 }
 
 void configure_tzc380(void)
@@ -213,3 +185,25 @@ int add_res_mem_dt_node(void *fdt, const char *name, phys_addr_t pa,
 	}
 	return 0;
 }
+
+#if !defined(CONFIG_SPL_BUILD) && defined(CONFIG_PSCI_BOARD_REBOOT)
+
+#define PSCI_SYSTEM_RESET2_AARCH64		0xc4000012
+#define PSCI_RESET2_SYSTEM_BOARD_RESET		0x80000002
+
+int do_board_reboot(struct cmd_tbl *cmdtp, int flag, int argc, char * const argv[])
+{
+	struct udevice *dev;
+
+	uclass_get_device_by_name(UCLASS_FIRMWARE, "psci", &dev);
+	invoke_psci_fn(PSCI_SYSTEM_RESET2_AARCH64, PSCI_RESET2_SYSTEM_BOARD_RESET, 0, 0);
+
+	return CMD_RET_FAILURE;
+}
+
+U_BOOT_CMD(
+	reboot,	1,	1,	do_board_reboot,
+	"reboot\n",
+	"system board reboot for some i.MX devices\n"
+);
+#endif

@@ -99,7 +99,6 @@ static int socfpga_dwmmc_get_clk_rate(struct udevice *dev)
 
 	host->bus_hz = clk_get_rate(&clk);
 
-	clk_free(&clk);
 #else
 	/* Fixed clock divide by 4 which due to the SDMMC wrapper */
 	host->bus_hz = cm_get_mmc_controller_clk_hz();
@@ -143,6 +142,8 @@ static int socfpga_dwmmc_of_to_plat(struct udevice *dev)
 	priv->smplsel = fdtdec_get_uint(gd->fdt_blob, dev_of_offset(dev),
 					"smplsel", 0);
 	host->priv = priv;
+
+	host->fifo_mode = dev_read_bool(dev, "fifo-mode");
 
 	return 0;
 }

@@ -4,6 +4,8 @@
  * Przemyslaw Marczak <p.marczak@samsung.com>
  */
 
+#define LOG_CATEGORY UCLASS_ADC
+
 #include <common.h>
 #include <errno.h>
 #include <div64.h>
@@ -13,6 +15,7 @@
 #include <dm/uclass-internal.h>
 #include <adc.h>
 #include <linux/delay.h>
+#include <linux/printk.h>
 #include <power/regulator.h>
 
 #define ADC_UCLASS_PLATDATA_SIZE	sizeof(struct adc_uclass_plat)
@@ -20,7 +23,7 @@
 #define CHECK_MASK			(!CHECK_NUMBER)
 
 /* TODO: add support for timer uclass (for early calls) */
-#ifdef CONFIG_SANDBOX_ARCH
+#ifdef CONFIG_SANDBOX
 #define sdelay(x)	udelay(x)
 #else
 extern void sdelay(unsigned long loops);
@@ -49,23 +52,21 @@ static int check_channel(struct udevice *dev, int value, bool number_or_mask,
 static int adc_supply_enable(struct udevice *dev)
 {
 	struct adc_uclass_plat *uc_pdata = dev_get_uclass_plat(dev);
-	const char *supply_type;
-	int ret = 0;
+	int ret;
 
-	if (uc_pdata->vdd_supply) {
-		supply_type = "vdd";
-		ret = regulator_set_enable(uc_pdata->vdd_supply, true);
+	ret = regulator_set_enable_if_allowed(uc_pdata->vdd_supply, true);
+	if (ret && ret != -ENOSYS) {
+		pr_err("%s: can't enable vdd-supply!", dev->name);
+		return ret;
 	}
 
-	if (!ret && uc_pdata->vss_supply) {
-		supply_type = "vss";
-		ret = regulator_set_enable(uc_pdata->vss_supply, true);
+	ret = regulator_set_enable_if_allowed(uc_pdata->vss_supply, true);
+	if (ret && ret != -ENOSYS) {
+		pr_err("%s: can't enable vss-supply!", dev->name);
+		return ret;
 	}
 
-	if (ret)
-		pr_err("%s: can't enable %s-supply!", dev->name, supply_type);
-
-	return ret;
+	return 0;
 }
 
 int adc_data_mask(struct udevice *dev, unsigned int *data_mask)

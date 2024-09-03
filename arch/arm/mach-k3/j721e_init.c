@@ -2,30 +2,29 @@
 /*
  * J721E: SoC specific initialization
  *
- * Copyright (C) 2018-2019 Texas Instruments Incorporated - http://www.ti.com/
+ * Copyright (C) 2018-2019 Texas Instruments Incorporated - https://www.ti.com/
  *	Lokesh Vutla <lokeshvutla@ti.com>
  */
 
-#include <common.h>
 #include <init.h>
 #include <spl.h>
 #include <asm/io.h>
 #include <asm/armv7_mpu.h>
 #include <asm/arch/hardware.h>
-#include <asm/arch/sysfw-loader.h>
+#include "sysfw-loader.h"
 #include "common.h"
-#include <asm/arch/sys_proto.h>
 #include <linux/soc/ti/ti_sci_protocol.h>
 #include <dm.h>
 #include <dm/uclass-internal.h>
 #include <dm/pinctrl.h>
+#include <dm/root.h>
+#include <fdtdec.h>
 #include <mmc.h>
 #include <remoteproc.h>
 
-#ifdef CONFIG_SPL_BUILD
 #ifdef CONFIG_K3_LOAD_SYSFW
-#ifdef CONFIG_TI_SECURE_DEVICE
 struct fwl_data cbass_hc_cfg0_fwls[] = {
+#if defined(CONFIG_TARGET_J721E_R5_EVM)
 	{ "PCIE0_CFG", 2560, 8 },
 	{ "PCIE1_CFG", 2561, 8 },
 	{ "USB3SS0_CORE", 2568, 4 },
@@ -34,11 +33,16 @@ struct fwl_data cbass_hc_cfg0_fwls[] = {
 	{ "UFS_HCI0_CFG", 2580, 4 },
 	{ "SERDES0", 2584, 1 },
 	{ "SERDES1", 2585, 1 },
+#elif defined(CONFIG_TARGET_J7200_R5_EVM)
+	{ "PCIE1_CFG", 2561, 7 },
+#endif
 }, cbass_hc0_fwls[] = {
+#if defined(CONFIG_TARGET_J721E_R5_EVM)
 	{ "PCIE0_HP", 2528, 24 },
 	{ "PCIE0_LP", 2529, 24 },
 	{ "PCIE1_HP", 2530, 24 },
 	{ "PCIE1_LP", 2531, 24 },
+#endif
 }, cbass_rc_cfg0_fwls[] = {
 	{ "EMMCSD4SS0_CFG", 2380, 4 },
 }, cbass_rc0_fwls[] = {
@@ -61,7 +65,6 @@ struct fwl_data cbass_hc_cfg0_fwls[] = {
 }, wkup_cbass0_fwls[] = {
 	{ "WKUP_CTRL_MMR0", 131, 16 },
 };
-#endif
 #endif
 
 static void ctrl_mmr_unlock(void)
@@ -125,15 +128,68 @@ void k3_mmc_restart_clock(void)
  * but the .bss is cleared between writing and reading this variable, so move
  * it to the .data section.
  */
-u32 bootindex __attribute__((section(".data")));
-static struct rom_extended_boot_data bootdata __section(.data);
+u32 bootindex __section(".data");
+static struct rom_extended_boot_data bootdata __section(".data");
 
 static void store_boot_info_from_rom(void)
 {
 	bootindex = *(u32 *)(CONFIG_SYS_K3_BOOT_PARAM_TABLE_INDEX);
-	memcpy(&bootdata, (uintptr_t *)ROM_ENTENDED_BOOT_DATA_INFO,
+	memcpy(&bootdata, (uintptr_t *)ROM_EXTENDED_BOOT_DATA_INFO,
 	       sizeof(struct rom_extended_boot_data));
 }
+
+#ifdef CONFIG_SPL_OF_LIST
+void do_dt_magic(void)
+{
+	int ret, rescan, mmc_dev = -1;
+	static struct mmc *mmc;
+
+	/* Perform board detection */
+	do_board_detect();
+
+	/*
+	 * Board detection has been done.
+	 * Let us see if another dtb wouldn't be a better match
+	 * for our board
+	 */
+	if (IS_ENABLED(CONFIG_CPU_V7R)) {
+		ret = fdtdec_resetup(&rescan);
+		if (!ret && rescan) {
+			dm_uninit();
+			dm_init_and_scan(true);
+		}
+	}
+
+	/*
+	 * Because of multi DTB configuration, the MMC device has
+	 * to be re-initialized after reconfiguring FDT inorder to
+	 * boot from MMC. Do this when boot mode is MMC and ROM has
+	 * not loaded SYSFW.
+	 */
+	switch (spl_boot_device()) {
+	case BOOT_DEVICE_MMC1:
+		mmc_dev = 0;
+		break;
+	case BOOT_DEVICE_MMC2:
+	case BOOT_DEVICE_MMC2_2:
+		mmc_dev = 1;
+		break;
+	}
+
+	if (mmc_dev > 0 && !is_rom_loaded_sysfw(&bootdata)) {
+		ret = mmc_init_device(mmc_dev);
+		if (!ret) {
+			mmc = find_mmc_device(mmc_dev);
+			if (mmc) {
+				ret = mmc_init(mmc);
+				if (ret) {
+					printf("mmc init failed with error: %d\n", ret);
+				}
+			}
+		}
+	}
+}
+#endif
 
 void board_init_f(ulong dummy)
 {
@@ -172,6 +228,18 @@ void board_init_f(ulong dummy)
 		pinctrl_select_state(dev, "default");
 
 	/*
+	 * Force probe of clk_k3 driver here to ensure basic default clock
+	 * configuration is always done.
+	 */
+	if (IS_ENABLED(CONFIG_SPL_CLK_K3)) {
+		ret = uclass_get_device_by_driver(UCLASS_CLK,
+						  DM_DRIVER_GET(ti_clk),
+						  &dev);
+		if (ret)
+			panic("Failed to initialize clk-k3!\n");
+	}
+
+	/*
 	 * Load, start up, and configure system controller firmware. Provide
 	 * the U-Boot console init function to the SYSFW post-PM configuration
 	 * callback hook, effectively switching on (or over) the console
@@ -180,11 +248,14 @@ void board_init_f(ulong dummy)
 	k3_sysfw_loader(is_rom_loaded_sysfw(&bootdata),
 			k3_mmc_stop_clock, k3_mmc_restart_clock);
 
+#ifdef CONFIG_SPL_OF_LIST
+	do_dt_magic();
+#endif
+
 	/* Prepare console output */
 	preloader_console_init();
 
 	/* Disable ROM configured firewalls right after loading sysfw */
-#ifdef CONFIG_TI_SECURE_DEVICE
 	remove_fwl_configs(cbass_hc_cfg0_fwls, ARRAY_SIZE(cbass_hc_cfg0_fwls));
 	remove_fwl_configs(cbass_hc0_fwls, ARRAY_SIZE(cbass_hc0_fwls));
 	remove_fwl_configs(cbass_rc_cfg0_fwls, ARRAY_SIZE(cbass_rc_cfg0_fwls));
@@ -192,7 +263,6 @@ void board_init_f(ulong dummy)
 	remove_fwl_configs(infra_cbass0_fwls, ARRAY_SIZE(infra_cbass0_fwls));
 	remove_fwl_configs(mcu_cbass0_fwls, ARRAY_SIZE(mcu_cbass0_fwls));
 	remove_fwl_configs(wkup_cbass0_fwls, ARRAY_SIZE(wkup_cbass0_fwls));
-#endif
 #else
 	/* Prepare console output */
 	preloader_console_init();
@@ -201,9 +271,8 @@ void board_init_f(ulong dummy)
 	/* Output System Firmware version info */
 	k3_sysfw_print_ver();
 
-	/* Perform EEPROM-based board detection */
-	if (IS_ENABLED(CONFIG_TI_I2C_BOARD_DETECT))
-		do_board_detect();
+	/* Perform board detection */
+	do_board_detect();
 
 #if defined(CONFIG_CPU_V7R) && defined(CONFIG_K3_AVS0)
 	ret = uclass_get_device_by_driver(UCLASS_MISC, DM_DRIVER_GET(k3_avs),
@@ -217,13 +286,20 @@ void board_init_f(ulong dummy)
 	if (ret)
 		panic("DRAM init failed: %d\n", ret);
 #endif
-	spl_enable_dcache();
+	spl_enable_cache();
 }
 
-u32 spl_mmc_boot_mode(const u32 boot_device)
+u32 spl_mmc_boot_mode(struct mmc *mmc, const u32 boot_device)
 {
 	switch (boot_device) {
 	case BOOT_DEVICE_MMC1:
+		if (IS_ENABLED(CONFIG_SUPPORT_EMMC_BOOT)) {
+			if (spl_mmc_emmc_boot_partition(mmc))
+				return MMCSD_MODE_EMMCBOOT;
+			return MMCSD_MODE_FS;
+		}
+		if (IS_ENABLED(CONFIG_SPL_FS_FAT) || IS_ENABLED(CONFIG_SPL_FS_EXT4))
+			return MMCSD_MODE_FS;
 		return MMCSD_MODE_EMMCBOOT;
 	case BOOT_DEVICE_MMC2:
 		return MMCSD_MODE_FS;
@@ -284,6 +360,17 @@ static u32 __get_primary_bootmedia(u32 main_devstat, u32 wkup_devstat)
 	return bootmode;
 }
 
+u32 spl_spi_boot_bus(void)
+{
+	u32 wkup_devstat = readl(CTRLMMR_WKUP_DEVSTAT);
+	u32 main_devstat = readl(CTRLMMR_MAIN_DEVSTAT);
+	u32 bootmode = ((wkup_devstat & WKUP_DEVSTAT_PRIMARY_BOOTMODE_MASK) >>
+			WKUP_DEVSTAT_PRIMARY_BOOTMODE_SHIFT) |
+			((main_devstat & MAIN_DEVSTAT_BOOT_MODE_B_MASK) << BOOT_MODE_B_SHIFT);
+
+	return (bootmode == BOOT_DEVICE_QSPI) ? 1 : 0;
+}
+
 u32 spl_boot_device(void)
 {
 	u32 wkup_devstat = readl(CTRLMMR_WKUP_DEVSTAT);
@@ -302,95 +389,3 @@ u32 spl_boot_device(void)
 	else
 		return __get_backup_bootmedia(main_devstat);
 }
-#endif
-
-#ifdef CONFIG_SYS_K3_SPL_ATF
-
-#define J721E_DEV_MCU_RTI0			262
-#define J721E_DEV_MCU_RTI1			263
-#define J721E_DEV_MCU_ARMSS0_CPU0		250
-#define J721E_DEV_MCU_ARMSS0_CPU1		251
-
-void release_resources_for_core_shutdown(void)
-{
-	struct ti_sci_handle *ti_sci;
-	struct ti_sci_dev_ops *dev_ops;
-	struct ti_sci_proc_ops *proc_ops;
-	int ret;
-	u32 i;
-
-	const u32 put_device_ids[] = {
-		J721E_DEV_MCU_RTI0,
-		J721E_DEV_MCU_RTI1,
-	};
-
-	ti_sci = get_ti_sci_handle();
-	dev_ops = &ti_sci->ops.dev_ops;
-	proc_ops = &ti_sci->ops.proc_ops;
-
-	/* Iterate through list of devices to put (shutdown) */
-	for (i = 0; i < ARRAY_SIZE(put_device_ids); i++) {
-		u32 id = put_device_ids[i];
-
-		ret = dev_ops->put_device(ti_sci, id);
-		if (ret)
-			panic("Failed to put device %u (%d)\n", id, ret);
-	}
-
-	const u32 put_core_ids[] = {
-		J721E_DEV_MCU_ARMSS0_CPU1,
-		J721E_DEV_MCU_ARMSS0_CPU0,	/* Handle CPU0 after CPU1 */
-	};
-
-	/* Iterate through list of cores to put (shutdown) */
-	for (i = 0; i < ARRAY_SIZE(put_core_ids); i++) {
-		u32 id = put_core_ids[i];
-
-		/*
-		 * Queue up the core shutdown request. Note that this call
-		 * needs to be followed up by an actual invocation of an WFE
-		 * or WFI CPU instruction.
-		 */
-		ret = proc_ops->proc_shutdown_no_wait(ti_sci, id);
-		if (ret)
-			panic("Failed sending core %u shutdown message (%d)\n",
-			      id, ret);
-	}
-}
-#endif
-
-#ifdef CONFIG_SYS_K3_SPL_ATF
-void start_non_linux_remote_cores(void)
-{
-	int size = 0, ret;
-	u32 loadaddr = 0;
-
-	if (!soc_is_j721e())
-		return;
-
-	size = load_firmware("name_mainr5f0_0fw", "addr_mainr5f0_0load",
-			     &loadaddr);
-	if (size <= 0)
-		goto err_load;
-
-	/* assuming remoteproc 2 is aliased for the needed remotecore */
-	ret = rproc_load(2, loadaddr, size);
-	if (ret) {
-		printf("Firmware failed to start on rproc (%d)\n", ret);
-		goto err_load;
-	}
-
-	ret = rproc_start(2);
-	if (ret) {
-		printf("Firmware init failed on rproc (%d)\n", ret);
-		goto err_load;
-	}
-
-	printf("Remoteproc 2 started successfully\n");
-
-	return;
-
-err_load:
-	rproc_reset(2);
-}
-#endif

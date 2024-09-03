@@ -3,7 +3,7 @@
  * Copyright 2019 NXP
  */
 
-#include <common.h>
+#include <efi_loader.h>
 #include <env.h>
 #include <errno.h>
 #include <init.h>
@@ -25,13 +25,11 @@
 #include "../common/tcpc.h"
 #include <usb.h>
 #include <dwc3-uboot.h>
-#include <imx_sip.h>
-#include <linux/arm-smccc.h>
 #include <mmc.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
-#define UART_PAD_CTRL	(PAD_CTL_DSE6 | PAD_CTL_FSEL1 | PAD_CTL_PUE | PAD_CTL_PE) //John_gao add for uart put up 
+#define UART_PAD_CTRL	(PAD_CTL_DSE6 | PAD_CTL_FSEL1 | PAD_CTL_PUE | PAD_CTL_PE) //John_gao add for uart put up
 #define WDOG_PAD_CTRL	(PAD_CTL_DSE6 | PAD_CTL_ODE | PAD_CTL_PUE | PAD_CTL_PE)
 
 static iomux_v3_cfg_t const uart_pads[] = {
@@ -50,6 +48,23 @@ static void setup_gpmi_nand(void)
 	init_nand_clk();
 }
 #endif
+
+#if CONFIG_IS_ENABLED(EFI_HAVE_CAPSULE_SUPPORT)
+struct efi_fw_image fw_images[] = {
+	{
+		.image_type_id = IMX_BOOT_IMAGE_GUID,
+		.fw_name = u"IMX8MP-EVK-RAW",
+		.image_index = 1,
+	},
+};
+
+struct efi_capsule_update_info update_info = {
+	.dfu_string = "mmc 2=flash-bin raw 0 0x2000 mmcpart 1",
+	.num_images = ARRAY_SIZE(fw_images),
+	.images = fw_images,
+};
+
+#endif /* EFI_HAVE_CAPSULE_SUPPORT */
 
 int board_early_init_f(void)
 {
@@ -107,97 +122,6 @@ int ft_board_setup(void *blob, struct bd_info *bd)
 #endif
 #endif
 
-	return 0;
-}
-#endif
-
-#define LED_PAD IMX_GPIO_NR(3, 16)
-static iomux_v3_cfg_t const led_pads[] = {
-	MX8MP_PAD_NAND_READY_B__GPIO3_IO16 | MUX_PAD_CTRL(NO_PAD_CTRL),
-};
-static void setup_led(void)
-{
-	imx_iomux_v3_setup_multiple_pads(led_pads,
-					 ARRAY_SIZE(led_pads));
-
-	gpio_request(LED_PAD, "led_en");
-	gpio_direction_output(LED_PAD, 1);
-	
-}
-#ifdef CONFIG_FEC_MXC
-#define FEC_RST_PAD IMX_GPIO_NR(4, 19)
-static iomux_v3_cfg_t const fec1_rst_pads[] = {
-	MX8MP_PAD_SAI1_TXD7__GPIO4_IO19 | MUX_PAD_CTRL(NO_PAD_CTRL),
-};
-
-
-static void setup_iomux_fec(void)
-{
-	imx_iomux_v3_setup_multiple_pads(fec1_rst_pads,
-					 ARRAY_SIZE(fec1_rst_pads));
-
-	gpio_request(FEC_RST_PAD, "fec1_rst");
-	gpio_direction_output(FEC_RST_PAD, 0);
-	mdelay(15);
-	gpio_direction_output(FEC_RST_PAD, 1);
-	mdelay(100);
-}
-
-static int setup_fec(void)
-{
-	struct iomuxc_gpr_base_regs *gpr =
-		(struct iomuxc_gpr_base_regs *)IOMUXC_GPR_BASE_ADDR;
-
-	setup_iomux_fec();
-
-	/* Enable RGMII TX clk output */
-	setbits_le32(&gpr->gpr[1], BIT(22));
-
-	//return set_clk_enet(ENET_125MHZ);
-	return 0;
-}
-#endif
-
-#ifdef CONFIG_DWC_ETH_QOS
-
-#define EQOS_RST_PAD IMX_GPIO_NR(4, 18)
-static iomux_v3_cfg_t const eqos_rst_pads[] = {
-	MX8MP_PAD_SAI1_TXD6__GPIO4_IO18 | MUX_PAD_CTRL(NO_PAD_CTRL),
-};
-
-static void setup_iomux_eqos(void)
-{
-	imx_iomux_v3_setup_multiple_pads(eqos_rst_pads,
-					 ARRAY_SIZE(eqos_rst_pads));
-
-	gpio_request(EQOS_RST_PAD, "eqos_rst");
-	gpio_direction_output(EQOS_RST_PAD, 0);
-	mdelay(15);
-	gpio_direction_output(EQOS_RST_PAD, 1);
-	mdelay(100);
-}
-
-static int setup_eqos(void)
-{
-	struct iomuxc_gpr_base_regs *gpr =
-		(struct iomuxc_gpr_base_regs *)IOMUXC_GPR_BASE_ADDR;
-
-	setup_iomux_eqos();
-
-	/* set INTF as RGMII, enable RGMII TXC clock */
-	clrsetbits_le32(&gpr->gpr[1],
-			IOMUXC_GPR_GPR1_GPR_ENET_QOS_INTF_SEL_MASK, BIT(16));
-	setbits_le32(&gpr->gpr[1], BIT(19) | BIT(21));
-
-	return set_clk_eqos(ENET_125MHZ);
-}
-#endif
-
-#if defined(CONFIG_FEC_MXC) || defined(CONFIG_DWC_ETH_QOS)
-int board_phy_config(struct phy_device *phydev)
-{
-	if (phydev->drv->config)
-		phydev->drv->config(phydev);
 	return 0;
 }
 #endif
@@ -380,9 +304,9 @@ static struct dwc3_device dwc3_device_data = {
 	.power_down_scale = 2,
 };
 
-int usb_gadget_handle_interrupts(int index)
+int dm_usb_gadget_handle_interrupts(struct udevice *dev)
 {
-	dwc3_uboot_handle_interrupt(index);
+	dwc3_uboot_handle_interrupt(dev);
 	return 0;
 }
 
@@ -429,9 +353,9 @@ static void dwc3_nxp_usb_phy_init(struct dwc3_device *dwc3)
 int board_usb_init(int index, enum usb_init_type init)
 {
 	int ret = 0;
-	imx8m_usb_power(index, true);
 
 	if (index == 0 && init == USB_INIT_DEVICE) {
+		imx8m_usb_power(index, true);
 #ifdef CONFIG_USB_TCPC
 		ret = tcpc_setup_ufp_mode(&port1);
 		if (ret)
@@ -454,13 +378,12 @@ int board_usb_cleanup(int index, enum usb_init_type init)
 	int ret = 0;
 	if (index == 0 && init == USB_INIT_DEVICE) {
 		dwc3_uboot_exit(index);
+		imx8m_usb_power(index, false);
 	} else if (index == 0 && init == USB_INIT_HOST) {
 #ifdef CONFIG_USB_TCPC
 		ret = tcpc_disable_src_vbus(&port1);
 #endif
 	}
-
-	imx8m_usb_power(index, false);
 
 	return ret;
 }
@@ -489,32 +412,11 @@ int board_typec_get_mode(int index)
 }
 #endif
 #endif
- 
-
-
-#define DISPMIX				13
-#define MIPI				15
 
 int board_init(void)
 {
-	struct arm_smccc_res res;
-
-	setup_led();
 #ifdef CONFIG_USB_TCPC
 	setup_typec();
-
-	/* Enable USB power default */
-	imx8m_usb_power(0, true);
-	imx8m_usb_power(1, true);
-#endif
-
-#ifdef CONFIG_FEC_MXC
-	setup_fec();
-#endif
-
-#ifdef CONFIG_DWC_ETH_QOS
-	/* clock, pin, gpr */
-	setup_eqos();
 #endif
 
 #ifdef CONFIG_NAND_MXS
@@ -524,12 +426,6 @@ int board_init(void)
 #if defined(CONFIG_USB_DWC3) || defined(CONFIG_USB_XHCI_IMX8M)
 	init_usb_clk();
 #endif
-
-	/* enable the dispmix & mipi phy power domain */
-	arm_smccc_smc(IMX_SIP_GPC, IMX_SIP_GPC_PM_DOMAIN,
-		      DISPMIX, true, 0, 0, 0, 0, &res);
-	arm_smccc_smc(IMX_SIP_GPC, IMX_SIP_GPC_PM_DOMAIN,
-		      MIPI, true, 0, 0, 0, 0, &res);
 
 	return 0;
 }
@@ -553,9 +449,9 @@ bool is_power_key_pressed(void) {
 }
 #endif
 
-#ifdef CONFIG_SPL_MMC_SUPPORT
+#ifdef CONFIG_SPL_MMC
 #define UBOOT_RAW_SECTOR_OFFSET 0x40
-unsigned long spl_mmc_get_uboot_raw_sector(struct mmc *mmc)
+unsigned long spl_mmc_get_uboot_raw_sector(struct mmc *mmc, unsigned long raw_sect)
 {
 	u32 boot_dev = spl_boot_device();
 	switch (boot_dev) {

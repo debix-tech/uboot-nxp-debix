@@ -14,6 +14,7 @@
 #include <asm/gpio.h>
 #include <asm/mach-imx/iomux-v3.h>
 #include <asm/mach-imx/boot_mode.h>
+#include <asm/sections.h>
 #include <fsl_esdhc_imx.h>
 #include <linux/libfdt.h>
 #include <spl.h>
@@ -147,7 +148,7 @@ void board_init_f(ulong dummy)
 	board_init_r(NULL, 0);
 }
 
-void reset_cpu(ulong addr)
+void reset_cpu(void)
 {
 }
 

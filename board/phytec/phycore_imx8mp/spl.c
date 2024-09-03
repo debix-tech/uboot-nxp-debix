@@ -21,7 +21,12 @@
 #include <power/pca9450.h>
 #include <spl.h>
 
+#include "../common/imx8m_som_detection.h"
+
 DECLARE_GLOBAL_DATA_PTR;
+
+#define EEPROM_ADDR             0x51
+#define EEPROM_ADDR_FALLBACK    0x59
 
 int spl_board_boot_device(enum boot_device boot_dev_spl)
 {
@@ -30,6 +35,81 @@ int spl_board_boot_device(enum boot_device boot_dev_spl)
 
 void spl_dram_init(void)
 {
+	int ret;
+
+	ret = phytec_eeprom_data_setup_fallback(NULL, 0, EEPROM_ADDR,
+						EEPROM_ADDR_FALLBACK);
+	if (ret)
+		goto out;
+
+	ret = phytec_imx8m_detect(NULL);
+	if (!ret)
+		phytec_print_som_info(NULL);
+
+	u8 rev = phytec_get_rev(NULL);
+	u8 somtype = phytec_get_som_type(NULL);
+
+	if (rev != PHYTEC_EEPROM_INVAL && (rev >= 3 || (somtype == SOM_TYPE_PCL && rev >= 1))) {
+		dram_timing.ddrc_cfg[3].val = 0x1323;
+		dram_timing.ddrc_cfg[4].val = 0x1e84800;
+		dram_timing.ddrc_cfg[5].val = 0x7a0118;
+		dram_timing.ddrc_cfg[8].val = 0xc00307a3;
+		dram_timing.ddrc_cfg[9].val = 0xc50000;
+		dram_timing.ddrc_cfg[10].val = 0xf4003f;
+		dram_timing.ddrc_cfg[11].val = 0xf30000;
+		dram_timing.ddrc_cfg[14].val = 0x2028222a;
+		dram_timing.ddrc_cfg[15].val = 0x8083f;
+		dram_timing.ddrc_cfg[16].val = 0xe0e000;
+		dram_timing.ddrc_cfg[17].val = 0x12040a12;
+		dram_timing.ddrc_cfg[18].val = 0x2050f0f;
+		dram_timing.ddrc_cfg[19].val = 0x1010009;
+		dram_timing.ddrc_cfg[20].val = 0x502;
+		dram_timing.ddrc_cfg[21].val = 0x20800;
+		dram_timing.ddrc_cfg[22].val = 0xe100002;
+		dram_timing.ddrc_cfg[23].val = 0x120;
+		dram_timing.ddrc_cfg[24].val = 0xc80064;
+		dram_timing.ddrc_cfg[25].val = 0x3e8001e;
+		dram_timing.ddrc_cfg[26].val = 0x3207a12;
+		dram_timing.ddrc_cfg[28].val = 0x4a3820e;
+		dram_timing.ddrc_cfg[30].val = 0x230e;
+		dram_timing.ddrc_cfg[37].val = 0x799;
+		dram_timing.ddrc_cfg[38].val = 0x9141d1c;
+		dram_timing.ddrc_cfg[74].val = 0x302;
+		dram_timing.ddrc_cfg[83].val = 0x599;
+		dram_timing.ddrc_cfg[99].val = 0x302;
+		dram_timing.ddrc_cfg[108].val = 0x599;
+		dram_timing.ddrphy_cfg[66].val = 0x18;
+		dram_timing.ddrphy_cfg[75].val = 0x1e3;
+		dram_timing.ddrphy_cfg[77].val = 0x1e3;
+		dram_timing.ddrphy_cfg[79].val = 0x1e3;
+		dram_timing.ddrphy_cfg[145].val = 0x3e8;
+		dram_timing.fsp_msg[0].drate = 4000;
+		dram_timing.fsp_msg[0].fsp_cfg[1].val = 0xfa0;
+		dram_timing.fsp_msg[0].fsp_cfg[10].val = 0x3ff4;
+		dram_timing.fsp_msg[0].fsp_cfg[11].val = 0xf3;
+		dram_timing.fsp_msg[0].fsp_cfg[15].val = 0x3ff4;
+		dram_timing.fsp_msg[0].fsp_cfg[16].val = 0xf3;
+		dram_timing.fsp_msg[0].fsp_cfg[22].val = 0xf400;
+		dram_timing.fsp_msg[0].fsp_cfg[23].val = 0xf33f;
+		dram_timing.fsp_msg[0].fsp_cfg[28].val = 0xf400;
+		dram_timing.fsp_msg[0].fsp_cfg[29].val = 0xf33f;
+		dram_timing.fsp_msg[3].drate = 4000;
+		dram_timing.fsp_msg[3].fsp_cfg[1].val = 0xfa0;
+		dram_timing.fsp_msg[3].fsp_cfg[11].val = 0x3ff4;
+		dram_timing.fsp_msg[3].fsp_cfg[12].val = 0xf3;
+		dram_timing.fsp_msg[3].fsp_cfg[16].val = 0x3ff4;
+		dram_timing.fsp_msg[3].fsp_cfg[17].val = 0xf3;
+		dram_timing.fsp_msg[3].fsp_cfg[23].val = 0xf400;
+		dram_timing.fsp_msg[3].fsp_cfg[24].val = 0xf33f;
+		dram_timing.fsp_msg[3].fsp_cfg[29].val = 0xf400;
+		dram_timing.fsp_msg[3].fsp_cfg[30].val = 0xf33f;
+		dram_timing.ddrphy_pie[480].val = 0x465;
+		dram_timing.ddrphy_pie[481].val = 0xfa;
+		dram_timing.ddrphy_pie[482].val = 0x9c4;
+		dram_timing.fsp_table[0] = 4000;
+	}
+
+out:
 	ddr_init(&dram_timing);
 }
 
@@ -53,7 +133,7 @@ int power_init_board(void)
 	struct pmic *p;
 	int ret;
 
-	ret = power_pca9450_init(0);
+	ret = power_pca9450_init(0, 0x25);
 	if (ret)
 		printf("power init failed");
 	p = pmic_get("PCA9450");
@@ -62,42 +142,30 @@ int power_init_board(void)
 	/* BUCKxOUT_DVS0/1 control BUCK123 output */
 	pmic_reg_write(p, PCA9450_BUCK123_DVS, 0x29);
 
-	/* increase VDD_SOC to typical value 0.95V */
+	/* Increase VDD_SOC and VDD_ARM to OD voltage 0.95V */
+	pmic_reg_write(p, PCA9450_BUCK1OUT_DVS0, 0x1C);
 	pmic_reg_write(p, PCA9450_BUCK2OUT_DVS0, 0x1C);
 
-	/* set WDOG_B_CFG to cold reset */
+	/* Set BUCK1 DVS1 to suspend controlled through PMIC_STBY_REQ */
+	pmic_reg_write(p, PCA9450_BUCK1OUT_DVS1, 0x14);
+	pmic_reg_write(p, PCA9450_BUCK1CTRL, 0x59);
+
+	/* Set WDOG_B_CFG to cold reset */
 	pmic_reg_write(p, PCA9450_RESET_CTRL, 0xA1);
 
 	return 0;
 }
 
-int board_fit_config_name_match(const char *name)
+void spl_board_init(void)
 {
-	return 0;
+	/* Set GIC clock to 500Mhz for OD VDD_SOC. */
+	clock_enable(CCGR_GIC, 0);
+	clock_set_target_val(GIC_CLK_ROOT, CLK_ROOT_ON | CLK_ROOT_SOURCE_SEL(5));
+	clock_enable(CCGR_GIC, 1);
 }
 
-#define UART_PAD_CTRL   (PAD_CTL_DSE6 | PAD_CTL_FSEL1)
-#define WDOG_PAD_CTRL   (PAD_CTL_DSE6 | PAD_CTL_ODE | PAD_CTL_PUE | PAD_CTL_PE)
-
-static iomux_v3_cfg_t const uart_pads[] = {
-	MX8MP_PAD_UART2_RXD__UART2_DCE_RX | MUX_PAD_CTRL(UART_PAD_CTRL),
-	MX8MP_PAD_UART2_TXD__UART2_DCE_TX | MUX_PAD_CTRL(UART_PAD_CTRL),
-};
-
-static iomux_v3_cfg_t const wdog_pads[] = {
-	MX8MP_PAD_GPIO1_IO02__WDOG1_WDOG_B  | MUX_PAD_CTRL(WDOG_PAD_CTRL),
-};
-
-int board_early_init_f(void)
+int board_fit_config_name_match(const char *name)
 {
-	struct wdog_regs *wdog = (struct wdog_regs *)WDOG1_BASE_ADDR;
-
-	imx_iomux_v3_setup_multiple_pads(wdog_pads, ARRAY_SIZE(wdog_pads));
-
-	set_wdog_reset(wdog);
-
-	imx_iomux_v3_setup_multiple_pads(uart_pads, ARRAY_SIZE(uart_pads));
-
 	return 0;
 }
 
@@ -107,9 +175,7 @@ void board_init_f(ulong dummy)
 
 	arch_cpu_init();
 
-	init_uart_clk(1);
-
-	board_early_init_f();
+	init_uart_clk(0);
 
 	ret = spl_early_init();
 	if (ret) {

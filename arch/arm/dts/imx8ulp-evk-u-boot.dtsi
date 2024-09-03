@@ -4,6 +4,13 @@
  */
 
 / {
+	mu@27020000 {
+		compatible = "fsl,imx8ulp-mu";
+		reg = <0 0x27020000 0 0x10000>;
+		status = "okay";
+		bootph-all;
+	};
+
 	aliases {
 		usbgadget0 = &usbg1;
 		usbgadget1 = &usbg2;
@@ -29,63 +36,77 @@
 	};
 };
 
-&{/soc@0} {
-	u-boot,dm-spl;
+&soc {
+	bootph-all;
+	bootph-pre-ram;
+};
+
+&{/firmware} {
+	bootph-some-ram;
+};
+
+&{/firmware/scmi} {
+	bootph-some-ram;
+};
+
+&{/firmware/scmi/protocol@15} {
+	bootph-some-ram;
 };
 
 &per_bridge3 {
-	u-boot,dm-spl;
+	bootph-all;
+	bootph-pre-ram;
 };
 
 &per_bridge4 {
-	u-boot,dm-spl;
+	bootph-all;
+	bootph-pre-ram;
 };
 
 &iomuxc1 {
-	u-boot,dm-spl;
+	bootph-all;
+	bootph-pre-ram;
 	fsl,mux_mask = <0xf00>;
 };
 
 &pinctrl_lpuart5 {
-	u-boot,dm-spl;
-};
-
-&s400_mu {
-	u-boot,dm-spl;
+	bootph-all;
+	bootph-pre-ram;
 };
 
 &lpuart5 {
-	u-boot,dm-spl;
+	bootph-all;
+	bootph-pre-ram;
 };
 
 &usdhc0 {
-	u-boot,dm-spl;
+	bootph-pre-ram;
 	mmc-hs400-1_8v;
 	mmc-hs400-enhanced-strobe;
 };
 
 &pinctrl_usdhc0 {
-	u-boot,dm-spl;
+	bootph-pre-ram;
 };
 
 &crypto {
-	u-boot,dm-spl;
+	bootph-pre-ram;
 };
 
 &sec_jr0 {
-	u-boot,dm-spl;
+	bootph-pre-ram;
 };
 
 &sec_jr1 {
-	u-boot,dm-spl;
+	bootph-pre-ram;
 };
 
 &sec_jr2 {
-	u-boot,dm-spl;
+	bootph-pre-ram;
 };
 
 &sec_jr3 {
-	u-boot,dm-spl;
+	bootph-pre-ram;
 };
 
 &lpi2c0 {
@@ -112,10 +133,8 @@
 
 &usbotg1 {
 	compatible = "fsl,imx8ulp-usb", "fsl,imx7ulp-usb", "fsl,imx27-usb";
-	fsl,usbphy = <&usbphy1>;
 };
 
 &usbotg2 {
 	compatible = "fsl,imx8ulp-usb", "fsl,imx7ulp-usb", "fsl,imx27-usb";
-	fsl,usbphy = <&usbphy2>;
 };

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright (C) 2018 Texas Instruments Incorporated - http://www.ti.com/
+ * Copyright (C) 2018 Texas Instruments Incorporated - https://www.ti.com/
  */
 
+#include <errno.h>
 #include <log.h>
 #include <malloc.h>
 #include <spi.h>
@@ -93,12 +94,14 @@ int spi_mem_adjust_op_size(struct spi_slave *slave,
 	if (slave->max_write_size && len > slave->max_write_size)
 		return -EINVAL;
 
-	if (op->data.dir == SPI_MEM_DATA_IN && slave->max_read_size)
-		op->data.nbytes = min(op->data.nbytes,
-				      slave->max_read_size);
-	else if (slave->max_write_size)
+	if (op->data.dir == SPI_MEM_DATA_IN) {
+		if (slave->max_read_size)
+			op->data.nbytes = min(op->data.nbytes,
+					      slave->max_read_size);
+	} else if (slave->max_write_size) {
 		op->data.nbytes = min(op->data.nbytes,
 				      slave->max_write_size - len);
+	}
 
 	if (!op->data.nbytes)
 		return -EINVAL;

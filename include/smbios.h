@@ -8,11 +8,15 @@
 #ifndef _SMBIOS_H_
 #define _SMBIOS_H_
 
-#include <dm/ofnode.h>
+#include <linux/types.h>
 
 /* SMBIOS spec version implemented */
 #define SMBIOS_MAJOR_VER	3
-#define SMBIOS_MINOR_VER	0
+#define SMBIOS_MINOR_VER	7
+
+enum {
+	SMBIOS_STR_MAX	= 64,	/* Maximum length allowed for a string */
+};
 
 /* SMBIOS structure types */
 enum {
@@ -50,13 +54,39 @@ struct __packed smbios_entry {
 	u8 bcd_rev;
 };
 
+/**
+ * struct smbios3_entry - SMBIOS 3.0 (64-bit) Entry Point structure
+ */
+struct __packed smbios3_entry {
+	/** @anchor: anchor string */
+	u8 anchor[5];
+	/** @checksum: checksum of the entry point structure */
+	u8 checksum;
+	/** @length: length of the entry point structure */
+	u8 length;
+	/** @major_ver: major version of the SMBIOS specification */
+	u8 major_ver;
+	/** @minor_ver: minor version of the SMBIOS specification */
+	u8 minor_ver;
+	/** @docrev: revision of the SMBIOS specification */
+	u8 doc_rev;
+	/** @entry_point_rev: revision of the entry point structure */
+	u8 entry_point_rev;
+	/** @reserved: reserved */
+	u8 reserved;
+	/** maximum size of SMBIOS table */
+	u32 table_maximum_size;
+	/** @struct_table_address: 64-bit physical starting address */
+	u64 struct_table_address;
+};
+
 /* BIOS characteristics */
 #define BIOS_CHARACTERISTICS_PCI_SUPPORTED	(1 << 7)
 #define BIOS_CHARACTERISTICS_UPGRADEABLE	(1 << 11)
 #define BIOS_CHARACTERISTICS_SELECTABLE_BOOT	(1 << 16)
 
 #define BIOS_CHARACTERISTICS_EXT1_ACPI		(1 << 0)
-#define BIOS_CHARACTERISTICS_EXT1_UEFI		(1 << 3)
+#define BIOS_CHARACTERISTICS_EXT2_UEFI		(1 << 3)
 #define BIOS_CHARACTERISTICS_EXT2_TARGET	(1 << 2)
 
 struct __packed smbios_type0 {
@@ -109,6 +139,7 @@ struct __packed smbios_type2 {
 	u8 chassis_location;
 	u16 chassis_handle;
 	u8 board_type;
+	u8 number_contained_objects;
 	char eos[SMBIOS_STRUCT_EOS_BYTES];
 };
 
@@ -224,9 +255,13 @@ static inline void fill_smbios_header(void *table, int type,
  *
  * This writes SMBIOS table at a given address.
  *
- * @addr:	start address to write SMBIOS table. If this is not
- *	16-byte-aligned then it will be aligned before the table is written
- * @return:	end address of SMBIOS table (and start address for next entry)
+ * @addr:	start address to write SMBIOS table, 16-byte-alignment
+ * recommended. Note that while the SMBIOS tables themself have no alignment
+ * requirement, some systems may requires alignment. For example x86 systems
+ * which put tables at f0000 require 16-byte alignment
+ *
+ * Return:	end address of SMBIOS table (and start address for next entry)
+ *		or NULL in case of an error
  */
 ulong write_smbios_table(ulong addr);
 
@@ -253,9 +288,9 @@ const struct smbios_header *smbios_header(const struct smbios_entry *entry, int 
  *
  * @header:    pointer to struct smbios_header
  * @index:     string index
- * @return:    NULL or a valid const char pointer
+ * @return:    NULL or a valid char pointer
  */
-const char *smbios_string(const struct smbios_header *header, int index);
+char *smbios_string(const struct smbios_header *header, int index);
 
 /**
  * smbios_update_version() - Update the version string
@@ -264,9 +299,38 @@ const char *smbios_string(const struct smbios_header *header, int index);
  * main loop has started) to update the BIOS version string (SMBIOS table 0).
  *
  * @version: New version string to use
- * @return 0 if OK, -ENOENT if no version string was previously written,
+ * Return: 0 if OK, -ENOENT if no version string was previously written,
  *	-ENOSPC if the new string is too large to fit
  */
 int smbios_update_version(const char *version);
+
+/**
+ * smbios_update_version_full() - Update the version string
+ *
+ * This can be called after the SMBIOS tables are written (e.g. after the U-Boot
+ * main loop has started) to update the BIOS version string (SMBIOS table 0).
+ * It scans for the correct place to put the version, so does not need U-Boot
+ * to have actually written the tables itself (e.g. if a previous bootloader
+ * did it).
+ *
+ * @smbios_tab: Start of SMBIOS tables
+ * @version: New version string to use
+ * Return: 0 if OK, -ENOENT if no version string was previously written,
+ *	-ENOSPC if the new string is too large to fit
+ */
+int smbios_update_version_full(void *smbios_tab, const char *version);
+
+/**
+ * smbios_prepare_measurement() - Update smbios table for the measurement
+ *
+ * TCG specification requires to measure static configuration information.
+ * This function clear the device dependent parameters such as
+ * serial number for the measurement.
+ *
+ * @entry: pointer to a struct smbios3_entry
+ * @header: pointer to a struct smbios_header
+ */
+void smbios_prepare_measurement(const struct smbios3_entry *entry,
+				struct smbios_header *header);
 
 #endif /* _SMBIOS_H_ */

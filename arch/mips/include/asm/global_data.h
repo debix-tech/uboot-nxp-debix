@@ -7,7 +7,13 @@
 #ifndef	__ASM_GBL_DATA_H
 #define __ASM_GBL_DATA_H
 
+#include <linux/types.h>
 #include <asm/regdef.h>
+
+struct octeon_eeprom_mac_addr {
+	u8 mac_addr_base[6];
+	u8 count;
+};
 
 /* Architecture-specific global data */
 struct arch_global_data {
@@ -29,6 +35,9 @@ struct arch_global_data {
 #endif
 #ifdef CONFIG_ARCH_MTMIPS
 	unsigned long timer_freq;
+#endif
+#ifdef CONFIG_ARCH_OCTEON
+	struct octeon_eeprom_mac_addr mac_desc;
 #endif
 };
 

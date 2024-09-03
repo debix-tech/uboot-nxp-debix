@@ -16,7 +16,7 @@
 #include <asm/io.h>
 #include <asm/gpio.h>
 #include <asm/arch/clock.h>
-#include <asm/arch/sci/sci.h>
+#include <firmware/imx/sci/sci.h>
 #include <asm/arch/imx8-pins.h>
 #include <asm/arch/snvs_security_sc.h>
 #include <asm/arch/iomux.h>
@@ -69,8 +69,8 @@ static iomux_cfg_t gpmi_nand_pads[] = {
 	SC_P_EMMC0_STROBE | MUX_MODE_ALT(1) | MUX_PAD_CTRL(GPMI_NAND_PAD_CTRL),
 	SC_P_EMMC0_RESET_B | MUX_MODE_ALT(1) | MUX_PAD_CTRL(GPMI_NAND_PAD_CTRL),
 	SC_P_EMMC0_CLK | MUX_MODE_ALT(1) | MUX_PAD_CTRL(GPMI_NAND_PAD_CTRL),
-	SC_P_EMMC0_CMD | MUX_MODE_ALT(1) | MUX_PAD_CTRL(GPMI_NAND_PAD_CTRL),
 
+	SC_P_USDHC1_CD_B | MUX_MODE_ALT(3) | MUX_PAD_CTRL(GPMI_NAND_PAD_CTRL),
 	SC_P_USDHC1_RESET_B | MUX_MODE_ALT(3) | MUX_PAD_CTRL(GPMI_NAND_PAD_CTRL),
 	SC_P_USDHC1_WP | MUX_MODE_ALT(3) | MUX_PAD_CTRL(GPMI_NAND_PAD_CTRL),
 	SC_P_USDHC1_VSELECT | MUX_MODE_ALT(3) | MUX_PAD_CTRL(GPMI_NAND_PAD_CTRL),
@@ -87,7 +87,7 @@ static void imx8dxl_gpmi_nand_initialize(void)
 	int ret;
 
 	ret = sc_pm_set_resource_power_mode(-1, SC_R_NAND, SC_PM_PW_MODE_ON);
-	if (ret != SC_ERR_NONE)
+	if (ret)
 		return;
 
 	init_clk_gpmi_nand();
@@ -120,7 +120,7 @@ int board_early_init_f(void)
 #if CONFIG_IS_ENABLED(DM_GPIO)
 static void board_gpio_init(void)
 {
-#if defined(CONFIG_DM_VIDEO)
+#if defined(CONFIG_VIDEO)
 	int ret;
 	struct gpio_desc desc;
 
@@ -246,16 +246,16 @@ int checkboard(void)
 #ifdef CONFIG_DWC_ETH_QOS
 static int setup_eqos(void)
 {
-	sc_err_t err;
+	int err;
 
 	/* set GPR14:12 to b'001: RGMII mode */
 	err = sc_misc_set_control(-1, SC_R_ENET_1, SC_C_INTF_SEL, 0x1);
-	if (err != SC_ERR_NONE)
+	if (err)
 		printf("SC_R_ENET_1 INTF_SEL failed! (error = %d)\n", err);
 
 	/* enable GPR11: CLK_GEN_EN */
 	err = sc_misc_set_control(-1, SC_R_ENET_1, SC_C_CLK_GEN_EN, 1);
-	if (err != SC_ERR_NONE)
+	if (err)
 		printf("SC_R_ENET_1 CLK_GEN_EN failed! (error = %d)\n", err);
 
 	return 0;
@@ -294,7 +294,7 @@ void board_quiesce_devices(void)
 /*
  * Board specific reset that is system reset.
  */
-void reset_cpu(ulong addr)
+void reset_cpu(void)
 {
 	/* TODO */
 }
@@ -328,7 +328,10 @@ int board_late_init(void)
 
 	if (fdt_file && !strcmp(fdt_file, "undefined")) {
 #if defined(CONFIG_TARGET_IMX8DXL_DDR3_EVK)
-		env_set("fdt_file", "imx8dxl-ddr3-evk.dtb");
+		if (m4_booted)
+			env_set("fdt_file", "imx8dxl-ddr3l-evk-rpmsg.dtb");
+		else
+			env_set("fdt_file", "imx8dxl-ddr3l-evk.dtb");
 #else
 		if (m4_booted)
 			env_set("fdt_file", "imx8dxl-evk-rpmsg.dtb");

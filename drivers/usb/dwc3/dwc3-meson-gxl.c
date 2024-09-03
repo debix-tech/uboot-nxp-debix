@@ -8,12 +8,12 @@
 
 #define DEBUG
 #include <common.h>
-#include <asm-generic/io.h>
 #include <dm.h>
 #include <dm/device-internal.h>
 #include <dm/lists.h>
 #include <dwc3-uboot.h>
 #include <generic-phy.h>
+#include <linux/io.h>
 #include <linux/usb/ch9.h>
 #include <linux/usb/gadget.h>
 #include <malloc.h>
@@ -170,7 +170,7 @@ static int dwc3_meson_gxl_usb2_init(struct dwc3_meson_gxl *priv)
 static int dwc3_meson_gxl_usb_init(struct dwc3_meson_gxl *priv)
 {
 	int ret;
-	
+
 	ret = dwc3_meson_gxl_usb2_init(priv);
 	if (ret)
 		return ret;
@@ -284,10 +284,8 @@ static int dwc3_meson_gxl_clk_init(struct dwc3_meson_gxl *priv)
 
 #if CONFIG_IS_ENABLED(CLK)
 	ret = clk_enable(&priv->clk);
-	if (ret) {
-		clk_free(&priv->clk);
+	if (ret)
 		return ret;
-	}
 #endif
 
 	return 0;
@@ -408,7 +406,24 @@ static int dwc3_meson_gxl_remove(struct udevice *dev)
 	return dm_scan_fdt_dev(dev);
 }
 
+static int dwc3_meson_gxl_child_pre_probe(struct udevice *dev)
+{
+	if (ofnode_device_is_compatible(dev_ofnode(dev), "amlogic,meson-g12a-usb"))
+		return dwc3_meson_gxl_force_mode(dev->parent, USB_DR_MODE_PERIPHERAL);
+
+	return 0;
+}
+
+static int dwc3_meson_gxl_child_post_remove(struct udevice *dev)
+{
+	if (ofnode_device_is_compatible(dev_ofnode(dev), "amlogic,meson-g12a-usb"))
+		return dwc3_meson_gxl_force_mode(dev->parent, USB_DR_MODE_HOST);
+
+	return 0;
+}
+
 static const struct udevice_id dwc3_meson_gxl_ids[] = {
+	{ .compatible = "amlogic,meson-axg-usb-ctrl" },
 	{ .compatible = "amlogic,meson-gxl-usb-ctrl" },
 	{ .compatible = "amlogic,meson-gxm-usb-ctrl" },
 	{ }
@@ -420,6 +435,8 @@ U_BOOT_DRIVER(dwc3_generic_wrapper) = {
 	.of_match = dwc3_meson_gxl_ids,
 	.probe = dwc3_meson_gxl_probe,
 	.remove = dwc3_meson_gxl_remove,
+	.child_pre_probe = dwc3_meson_gxl_child_pre_probe,
+	.child_post_remove = dwc3_meson_gxl_child_post_remove,
 	.plat_auto	= sizeof(struct dwc3_meson_gxl),
 
 };

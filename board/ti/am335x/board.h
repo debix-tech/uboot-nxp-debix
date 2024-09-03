@@ -4,7 +4,7 @@
  *
  * TI AM335x boards information header
  *
- * Copyright (C) 2011, Texas Instruments, Incorporated - http://www.ti.com/
+ * Copyright (C) 2011, Texas Instruments, Incorporated - https://www.ti.com/
  */
 
 #ifndef _BOARD_H_
@@ -93,5 +93,6 @@ void enable_uart3_pin_mux(void);
 void enable_uart4_pin_mux(void);
 void enable_uart5_pin_mux(void);
 void enable_i2c0_pin_mux(void);
+void enable_i2c2_pin_mux(void);
 void enable_board_pin_mux(void);
 #endif

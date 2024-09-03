@@ -7,19 +7,19 @@
 
 #define pr_fmt(fmt) "X.509: "fmt
 #ifdef __UBOOT__
-#include <common.h>
 #include <image.h>
 #include <dm/devres.h>
 #include <linux/compat.h>
 #include <linux/err.h>
 #include <linux/errno.h>
+#include <linux/printk.h>
 #else
 #include <linux/module.h>
 #endif
 #include <linux/kernel.h>
 #ifdef __UBOOT__
 #include <crypto/x509_parser.h>
-#include <u-boot/rsa-checksum.h>
+#include <u-boot/hash-checksum.h>
 #else
 #include <linux/slab.h>
 #include <keys/asymmetric-subtype.h>
@@ -71,6 +71,10 @@ int x509_get_sig_params(struct x509_certificate *cert)
 		return -ENOPKG;
 	if (!strcmp(sig->hash_algo, "sha256"))
 		sig->digest_size = SHA256_SUM_LEN;
+	else if (!strcmp(sig->hash_algo, "sha384"))
+		sig->digest_size = SHA384_SUM_LEN;
+	else if (!strcmp(sig->hash_algo, "sha512"))
+		sig->digest_size = SHA512_SUM_LEN;
 	else if (!strcmp(sig->hash_algo, "sha1"))
 		sig->digest_size = SHA1_SUM_LEN;
 	else

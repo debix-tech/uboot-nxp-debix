@@ -22,7 +22,7 @@
 #include <asm/arch/imx8_mipi_dsi.h>
 #include <power-domain.h>
 #include <asm/arch/lpcg.h>
-#include <asm/arch/sci/sci.h>
+#include <firmware/imx/sci/sci.h>
 #include <regmap.h>
 #include <syscon.h>
 
@@ -40,7 +40,7 @@ struct imx8_ldb_priv {
 
 static int imx8_ldb_soc_setup(struct udevice *dev, sc_pm_clock_rate_t pixel_clock)
 {
-	sc_err_t err;
+	int err;
 	sc_rsrc_t lvds_rsrc, mipi_rsrc;
 	const char *pd_name;
 	struct imx8_ldb_priv *priv = dev_get_priv(dev);
@@ -75,19 +75,33 @@ static int imx8_ldb_soc_setup(struct udevice *dev, sc_pm_clock_rate_t pixel_cloc
 
 	/* Setup clocks */
 	err = sc_pm_set_clock_rate(-1, lvds_rsrc, SC_PM_CLK_BYPASS, &pixel_clock);
-	if (err != SC_ERR_NONE) {
+	if (err) {
 		printf("LVDS set rate SC_PM_CLK_BYPASS failed! (error = %d)\n", err);
 		return -EIO;
 	}
 
+	err = sc_pm_set_clock_parent(-1, lvds_rsrc, SC_PM_CLK_PER, SC_PM_PARENT_BYPS);
+	if (err) {
+		printf("LVDS set SC_PM_CLK_PER parent failed! (error = %d)\n",
+		       err);
+		return -EIO;
+	}
+
+	err = sc_pm_set_clock_parent(-1, lvds_rsrc, SC_PM_CLK_PHY, SC_PM_PARENT_BYPS);
+	if (err) {
+		printf("LVDS set SC_PM_CLK_PHY parent failed! (error = %d)\n",
+		       err);
+		return -EIO;
+	}
+
 	err = sc_pm_set_clock_rate(-1, lvds_rsrc, SC_PM_CLK_PER, &pixel_clock);
-	if (err != SC_ERR_NONE) {
+	if (err) {
 		printf("LVDS set rate SC_PM_CLK_BYPASS failed! (error = %d)\n", err);
 		return -EIO;
 	}
 
 	err = sc_pm_set_clock_rate(-1, lvds_rsrc, SC_PM_CLK_PHY, &pixel_clock);
-	if (err != SC_ERR_NONE) {
+	if (err) {
 		printf("LVDS set rate SC_PM_CLK_BYPASS failed! (error = %d)\n", err);
 		return -EIO;
 	}
@@ -99,39 +113,39 @@ static int imx8_ldb_soc_setup(struct udevice *dev, sc_pm_clock_rate_t pixel_cloc
 
 		/* Configure to LVDS mode not MIPI DSI */
 		err = sc_misc_set_control(-1, mipi_rsrc, SC_C_MODE, 1);
-		if (err != SC_ERR_NONE) {
+		if (err) {
 			printf("LVDS sc_misc_set_control SC_C_MODE failed! (error = %d)\n", err);
 			return -EIO;
 		}
 
 		/* Configure to LVDS mode with single channel */
 		err = sc_misc_set_control(-1, mipi_rsrc, SC_C_DUAL_MODE, 0);
-		if (err != SC_ERR_NONE) {
+		if (err) {
 			printf("LVDS sc_misc_set_control SC_C_DUAL_MODE failed! (error = %d)\n", err);
 			return -EIO;
 		}
 
 		err = sc_misc_set_control(-1, mipi_rsrc, SC_C_PXL_LINK_SEL, lvds_id);
-		if (err != SC_ERR_NONE) {
+		if (err) {
 			printf("LVDS sc_misc_set_control SC_C_PXL_LINK_SEL failed! (error = %d)\n", err);
 			return -EIO;
 		}
 	}
 
 	err = sc_pm_clock_enable(-1, lvds_rsrc, SC_PM_CLK_BYPASS, true, false);
-	if (err != SC_ERR_NONE) {
+	if (err) {
 		printf("LVDS enable clock SC_PM_CLK_BYPASS failed! (error = %d)\n", err);
 		return -EIO;
 	}
 
 	err = sc_pm_clock_enable(-1, lvds_rsrc, SC_PM_CLK_PER, true, false);
-	if (err != SC_ERR_NONE) {
+	if (err) {
 		printf("LVDS enable clock SC_PM_CLK_PER failed! (error = %d)\n", err);
 		return -EIO;
 	}
 
 	err = sc_pm_clock_enable(-1, lvds_rsrc, SC_PM_CLK_PHY, true, false);
-	if (err != SC_ERR_NONE) {
+	if (err) {
 		printf("LVDS enable clock SC_PM_CLK_PHY failed! (error = %d)\n", err);
 		return -EIO;
 	}
@@ -152,11 +166,13 @@ void imx8_ldb_configure(struct udevice *dev)
 			IMX_LVDS_SET_FIELD(LVDS_CTRL_CH0_DATA_WIDTH, LVDS_CTRL_CH0_DATA_WIDTH__24BIT) |
 			IMX_LVDS_SET_FIELD(LVDS_CTRL_CH0_BIT_MAP, LVDS_CTRL_CH0_BIT_MAP__JEIDA);
 
-		phy_setting = 0x4 << 5 | 0x4 << 2 | 1 << 1 | 0x1;
+		phy_setting = 0x6 << 5 | 0x4 << 2 | 1 << 1 | 0x1;
 		regmap_write(priv->gpr, LDB_PHY_OFFSET + LVDS_PHY_CTRL, phy_setting);
 		regmap_write(priv->gpr, LDB_PHY_OFFSET + LVDS_CTRL, mode);
 		regmap_write(priv->gpr, LDB_PHY_OFFSET + MIPIv2_CSR_TX_ULPS, 0);
 		regmap_write(priv->gpr, LDB_PHY_OFFSET + MIPIv2_CSR_PXL2DPI, MIPI_CSR_PXL2DPI_24_BIT);
+
+		regmap_write(priv->gpr, MIPI_PHY_OFFSET + DPHY_CO, 1);
 
 		/* Power up PLL in MIPI DSI PHY */
 		regmap_write(priv->gpr, MIPI_PHY_OFFSET + DPHY_PD_PLL, 0);
@@ -174,8 +190,9 @@ void imx8_ldb_configure(struct udevice *dev)
 		phy_setting =
 			LVDS_PHY_CTRL_RFB_MASK |
 			LVDS_PHY_CTRL_CH0_EN_MASK |
-			(0 << LVDS_PHY_CTRL_M_SHIFT) |
-			(0x04 << LVDS_PHY_CTRL_CCM_SHIFT) |
+			(LVDS_PHY_CTRL_M__44MHz_89MHz << LVDS_PHY_CTRL_M_SHIFT) |
+			(0x06 << LVDS_PHY_CTRL_CCM_SHIFT) |
+			(0x25 << LVDS_PHY_CTRL_TST_SHIFT) |
 			(0x04 << LVDS_PHY_CTRL_CA_SHIFT);
 		regmap_write(priv->gpr, LDB_PHY_OFFSET + LVDS_PHY_CTRL, phy_setting);
 	}

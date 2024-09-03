@@ -1,14 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright 2019 NXP
- *
- * SPDX-License-Identifier:	GPL-2.0+
- *
- * Generated code from MX8M_DDR_tool
- *
- * Align with uboot version:
- * imx_v2019.04_5.4.x and above version
- * For imx_v2018.03_4.14.78_1.0.0_ga ~ imx_v2018.04_4.19.35_1.1.0_ga:
- * please replace #include <asm/arch/ddr.h> with #include <asm/arch/imx8m_ddr.h>
  */
 
 #include <linux/kernel.h>
@@ -1058,8 +1050,10 @@ struct dram_cfg_param ddr_ddrphy_trained_csr[] = {
 	{ 0x13730, 0x0 },
 	{ 0x13830, 0x0 },
 };
+
 /* P0 message block paremeter for training firmware */
 struct dram_cfg_param ddr_fsp0_cfg[] = {
+#ifdef CONFIG_IMX8M_LPDDR4_FREQ0_2400MTS
 	{ 0xd0000, 0x0 },
 	{ 0x54003, 0xe88 },
 	{ 0x54004, 0x2 },
@@ -1096,7 +1090,6 @@ struct dram_cfg_param ddr_fsp0_cfg[] = {
 	{ 0x5403d, 0x1600 },
 	{ 0xd0000, 0x1 },
 };
-
 
 /* P1 message block paremeter for training firmware */
 struct dram_cfg_param ddr_fsp1_cfg[] = {
@@ -1138,7 +1131,6 @@ struct dram_cfg_param ddr_fsp1_cfg[] = {
 	{ 0xd0000, 0x1 },
 };
 
-
 /* P2 message block paremeter for training firmware */
 struct dram_cfg_param ddr_fsp2_cfg[] = {
 	{ 0xd0000, 0x0 },
@@ -1178,7 +1170,6 @@ struct dram_cfg_param ddr_fsp2_cfg[] = {
 	{ 0x5403d, 0x1600 },
 	{ 0xd0000, 0x1 },
 };
-
 
 /* P0 2D message block paremeter for training firmware */
 struct dram_cfg_param ddr_fsp0_2d_cfg[] = {

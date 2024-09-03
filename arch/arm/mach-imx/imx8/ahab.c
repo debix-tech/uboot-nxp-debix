@@ -1,21 +1,22 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright 2018-2019 NXP
+ * Copyright 2018-2019, 2022 NXP
  */
 
 #include <common.h>
 #include <command.h>
 #include <errno.h>
+#include <imx_container.h>
 #include <log.h>
 #include <asm/global_data.h>
 #include <asm/io.h>
-#include <asm/arch/sci/sci.h>
+#include <firmware/imx/sci/sci.h>
 #include <asm/mach-imx/sys_proto.h>
 #include <asm/arch-imx/cpu.h>
 #include <asm/arch/sys_proto.h>
-#include <asm/mach-imx/image.h>
 #include <console.h>
 #include <cpu_func.h>
+#include "u-boot/sha256.h"
 #include <asm/mach-imx/ahab.h>
 
 DECLARE_GLOBAL_DATA_PTR;
@@ -25,22 +26,24 @@ DECLARE_GLOBAL_DATA_PTR;
 #define SECO_LOCAL_SEC_SEC_SECURE_RAM_BASE  (0x60000000UL)
 
 #define SECO_PT                 2U
+#define AHAB_HASH_TYPE_MASK	0x00000700
+#define AHAB_HASH_TYPE_SHA256	0
 
-int ahab_auth_cntr_hdr(struct container_hdr *container, u16 length)
+void *ahab_auth_cntr_hdr(struct container_hdr *container, u16 length)
 {
 	int err;
+
 	memcpy((void *)SEC_SECURE_RAM_BASE, (const void *)container,
-		ALIGN(length, CONFIG_SYS_CACHELINE_SIZE));
+	       ALIGN(length, CONFIG_SYS_CACHELINE_SIZE));
 
 	err = sc_seco_authenticate(-1, SC_SECO_AUTH_CONTAINER,
 				   SECO_LOCAL_SEC_SEC_SECURE_RAM_BASE);
-
 	if (err) {
-		printf("Authenticate container hdr failed, return %d\n",
-		       err);
+		printf("Authenticate container hdr failed, return %d\n", err);
+		return NULL;
 	}
 
-	return err;
+	return (void *)SEC_SECURE_RAM_BASE; /* Return authenticated container header */
 }
 
 int ahab_auth_release(void)
@@ -70,7 +73,8 @@ int ahab_verify_cntr_image(struct boot_img_t *img, int image_index)
 				ALIGN(img->dst + img->size, CONFIG_SYS_CACHELINE_SIZE) - 1);
 
 	if (err) {
-		printf("Error: can't find memreg for image load address 0x%llx, error %d\n", img->dst, err);
+		printf("Error: can't find memreg for image load address 0x%llx, error %d\n",
+		       img->dst, err);
 		return -ENOMEM;
 	}
 
@@ -105,7 +109,6 @@ int ahab_verify_cntr_image(struct boot_img_t *img, int image_index)
 	return ret;
 }
 
-
 static inline bool check_in_dram(ulong addr)
 {
 	int i;
@@ -126,10 +129,13 @@ int authenticate_os_container(ulong addr)
 {
 	struct container_hdr *phdr;
 	int i, ret = 0;
-	int err;
+	__maybe_unused int err;
 	u16 length;
 	struct boot_img_t *img;
 	unsigned long s, e;
+#ifdef CONFIG_ARMV8_CE_SHA256
+	u8 hash_value[SHA256_SUM_LEN];
+#endif
 
 	if (addr % 4) {
 		puts("Error: Image's address is not 4 byte aligned\n");
@@ -142,7 +148,7 @@ int authenticate_os_container(ulong addr)
 	}
 
 	phdr = (struct container_hdr *)addr;
-	if (phdr->tag != 0x87 && phdr->version != 0x0) {
+	if (!valid_container_hdr(phdr)) {
 		printf("Error: Wrong container header\n");
 		return -EFAULT;
 	}
@@ -156,15 +162,15 @@ int authenticate_os_container(ulong addr)
 
 	debug("container length %u\n", length);
 
-	err = ahab_auth_cntr_hdr(phdr, length);
-	if (err) {
+	phdr = ahab_auth_cntr_hdr(phdr, length);
+	if (!phdr) {
 		ret = -EIO;
 		goto exit;
 	}
 
 	/* Copy images to dest address */
 	for (i = 0; i < phdr->num_images; i++) {
-		img = (struct boot_img_t *)(addr +
+		img = (struct boot_img_t *)((ulong)phdr +
 					    sizeof(struct container_hdr) +
 					    i * sizeof(struct boot_img_t));
 
@@ -179,9 +185,23 @@ int authenticate_os_container(ulong addr)
 
 		flush_dcache_range(s, e);
 
-		ret = ahab_verify_cntr_image(img, i);
-		if (ret)
-			goto exit;
+#ifdef CONFIG_ARMV8_CE_SHA256
+		if (((img->hab_flags & AHAB_HASH_TYPE_MASK) >> 8) == AHAB_HASH_TYPE_SHA256) {
+			sha256_csum_wd((void *)img->dst, img->size, hash_value, CHUNKSZ_SHA256);
+			err = memcmp(&img->hash, &hash_value, SHA256_SUM_LEN);
+			if (err) {
+				printf("img %d hash comparison failed, error %d\n", i, err);
+				ret = -EIO;
+				goto exit;
+			}
+		} else {
+#endif
+			ret = ahab_verify_cntr_image(img, i);
+			if (ret)
+				goto exit;
+#ifdef CONFIG_ARMV8_CE_SHA256
+		}
+#endif
 	}
 
 exit:
@@ -198,7 +218,7 @@ static int do_authenticate(struct cmd_tbl *cmdtp, int flag, int argc,
 	if (argc < 2)
 		return CMD_RET_USAGE;
 
-	addr = simple_strtoul(argv[1], NULL, 16);
+	addr = hextoul(argv[1], NULL);
 
 	printf("Authenticate OS container at 0x%lx\n", addr);
 
@@ -300,7 +320,7 @@ static int do_ahab_status(struct cmd_tbl *cmdtp, int flag, int argc,
 	u16 lc;
 
 	err = sc_seco_chip_info(-1, &lc, NULL, NULL, NULL);
-	if (err != SC_ERR_NONE) {
+	if (err) {
 		printf("Error in get lifecycle\n");
 		return -EIO;
 	}
@@ -308,7 +328,7 @@ static int do_ahab_status(struct cmd_tbl *cmdtp, int flag, int argc,
 	display_life_cycle(lc);
 
 	err = sc_seco_get_event(-1, idx, &event);
-	while (err == SC_ERR_NONE) {
+	while (!err) {
 		printf("SECO Event[%u] = 0x%08X\n", idx, event);
 		display_ahab_auth_event(event);
 
@@ -318,6 +338,32 @@ static int do_ahab_status(struct cmd_tbl *cmdtp, int flag, int argc,
 
 	if (idx == 0)
 		printf("No SECO Events Found!\n\n");
+
+	return 0;
+}
+
+int ahab_close(void)
+{
+	int err;
+	u16 lc;
+
+	err = sc_seco_chip_info(-1, &lc, NULL, NULL, NULL);
+	if (err != SC_ERR_NONE) {
+		printf("Error in get lifecycle\n");
+		return -EIO;
+	}
+
+	if (lc != 0x20) {
+		puts("Current lifecycle is NOT NXP closed, can't move to OEM closed\n");
+		display_life_cycle(lc);
+		return -EPERM;
+	}
+
+	err = sc_seco_forward_lifecycle(-1, 16);
+	if (err != SC_ERR_NONE) {
+		printf("Error in forward lifecycle to OEM closed\n");
+		return -EIO;
+	}
 
 	return 0;
 }
@@ -343,27 +389,14 @@ static int do_ahab_close(struct cmd_tbl *cmdtp, int flag, int argc,
 {
 	int confirmed = argc >= 2 && !strcmp(argv[1], "-y");
 	int err;
-	u16 lc;
 
 	if (!confirmed && !confirm_close())
 		return -EACCES;
 
-	err = sc_seco_chip_info(-1, &lc, NULL, NULL, NULL);
-	if (err != SC_ERR_NONE) {
-		printf("Error in get lifecycle\n");
-		return -EIO;
-	}
-
-	if (lc != 0x20) {
-		puts("Current lifecycle is NOT NXP closed, can't move to OEM closed\n");
-		display_life_cycle(lc);
-		return -EPERM;
-	}
-
-	err = sc_seco_forward_lifecycle(-1, 16);
-	if (err != SC_ERR_NONE) {
-		printf("Error in forward lifecycle to OEM closed\n");
-		return -EIO;
+	err = ahab_close();
+	if (err) {
+		printf("Change to OEM closed failed\n");
+		return err;
 	}
 
 	printf("Change to OEM closed successfully\n");

@@ -13,6 +13,7 @@
 #include <asm/global_data.h>
 #include <asm/io.h>
 #include <asm/armv7m.h>
+#include <serial.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -60,21 +61,21 @@ int spl_dram_init(void)
 
 void spl_board_init(void)
 {
-	spl_dram_init();
 	preloader_console_init();
+	spl_dram_init();
 	arch_cpu_init(); /* to configure mpu for sdram rw permissions */
 }
 
 u32 spl_boot_device(void)
 {
-	return BOOT_DEVICE_MMC1;
+	/* There is no way to find the boot device so look if there is a valid IVT in RAM for MMC */
+	u32 nor_ivt = *(u32 *)(CONFIG_SYS_LOAD_ADDR - 0xC00);
+
+	if (nor_ivt == 0x402000d1)
+		return BOOT_DEVICE_MMC1;
+	return BOOT_DEVICE_NOR;
 }
 #endif
-
-u32 get_board_rev(void)
-{
-	return 0;
-}
 
 int board_init(void)
 {

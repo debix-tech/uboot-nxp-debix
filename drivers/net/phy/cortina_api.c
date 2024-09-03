@@ -2,7 +2,7 @@
 /*
  * Cortina PHY drivers framework
  *
- * Copyright 2018-2021 NXP
+ * Copyright 2018-2022 NXP
  * Copyright (C) 2006-2017 Inphi Corporation, Inc. All rights reserved.
  */
 

@@ -6,7 +6,6 @@
  * Copyright (C) 2017 Renesas Electronics Corporation
  */
 
-#include <common.h>
 #include <image.h>
 #include <init.h>
 #include <malloc.h>
@@ -22,9 +21,8 @@
 #include <asm/arch/sys_proto.h>
 #include <asm/gpio.h>
 #include <asm/arch/gpio.h>
-#include <asm/arch/rmobile.h>
+#include <asm/arch/renesas.h>
 #include <asm/arch/rcar-mstp.h>
-#include <asm/arch/sh_sdhi.h>
 #include <i2c.h>
 #include <mmc.h>
 
@@ -35,7 +33,7 @@ DECLARE_GLOBAL_DATA_PTR;
 
 int board_early_init_f(void)
 {
-#if defined(CONFIG_SYS_I2C) && defined(CONFIG_SYS_I2C_SH)
+#if CONFIG_IS_ENABLED(SYS_I2C_LEGACY) && defined(CONFIG_SYS_I2C_SH)
 	/* DVFS for reset */
 	mstp_clrbits_le32(SMSTPCR9, SMSTPCR9, DVFS_MSTP926);
 #endif
@@ -51,9 +49,6 @@ int board_early_init_f(void)
 
 int board_init(void)
 {
-	/* adress of boot parameters */
-	gd->bd->bi_boot_params = CONFIG_SYS_TEXT_BASE + 0x50000;
-
 	/* USB1 pull-up */
 	setbits_le32(PFC_PUEN6, PUEN_USB1_OVC | PUEN_USB1_PWEN);
 
@@ -72,17 +67,17 @@ int board_init(void)
 int board_fit_config_name_match(const char *name)
 {
 	/* PRR driver is not available yet */
-	u32 cpu_type = rmobile_get_cpu_type();
+	u32 cpu_type = renesas_get_cpu_type();
 
-	if ((cpu_type == RMOBILE_CPU_TYPE_R8A7795) &&
+	if ((cpu_type == RENESAS_CPU_TYPE_R8A7795) &&
 	    !strcmp(name, "r8a77950-ulcb-u-boot"))
 		return 0;
 
-	if ((cpu_type == RMOBILE_CPU_TYPE_R8A7796) &&
+	if ((cpu_type == RENESAS_CPU_TYPE_R8A7796) &&
 	    !strcmp(name, "r8a77960-ulcb-u-boot"))
 		return 0;
 
-	if ((cpu_type == RMOBILE_CPU_TYPE_R8A77965) &&
+	if ((cpu_type == RENESAS_CPU_TYPE_R8A77965) &&
 	    !strcmp(name, "r8a77965-ulcb-u-boot"))
 		return 0;
 

@@ -16,6 +16,7 @@
 #include <errno.h>
 #include <linux/bitops.h>
 #include <linux/delay.h>
+#include <phy.h>
 #include <log.h>
 
 DECLARE_GLOBAL_DATA_PTR;
@@ -38,21 +39,27 @@ void enable_ocotp_clk(unsigned char enable)
 
 int enable_i2c_clk(unsigned char enable, unsigned i2c_num)
 {
-	/* 0 - 3 is valid i2c num */
-	if (i2c_num > 3)
+	u8 i2c_ccgr[] = {
+			CCGR_I2C1, CCGR_I2C2, CCGR_I2C3, CCGR_I2C4,
+#if (IS_ENABLED(CONFIG_IMX8MP))
+			CCGR_I2C5_8MP, CCGR_I2C6_8MP
+#endif
+	};
+
+	if (i2c_num >= ARRAY_SIZE(i2c_ccgr))
 		return -EINVAL;
 
-	clock_enable(CCGR_I2C1 + i2c_num, !!enable);
+	clock_enable(i2c_ccgr[i2c_num], !!enable);
 
 	return 0;
 }
 
 static struct imx_int_pll_rate_table imx8mm_fracpll_tbl[] = {
 	PLL_1443X_RATE(1000000000U, 250, 3, 1, 0),
-	//John_gao 1866
-	PLL_1443X_RATE(933000000U, 311, 2, 2, 0),
+	PLL_1443X_RATE(933000000U, 311, 4, 1, 0),
 	//John_gao 1860
 	PLL_1443X_RATE(930000000U, 310, 2, 2, 0),
+	PLL_1443X_RATE(900000000U, 300, 2, 2, 0),
 	//John_gao 1632
 	PLL_1443X_RATE(816000000U, 204, 3, 1, 0),
 	PLL_1443X_RATE(800000000U, 200, 3, 1, 0),
@@ -81,7 +88,7 @@ static int fracpll_configure(enum pll_clocks pll, u32 freq)
 	}
 
 	if (i == ARRAY_SIZE(imx8mm_fracpll_tbl)) {
-		printf("No matched freq table %u\n", freq);
+		printf("%s: No matched freq table %u\n", __func__, freq);
 		return -EINVAL;
 	}
 
@@ -91,7 +98,6 @@ static int fracpll_configure(enum pll_clocks pll, u32 freq)
 	case ANATOP_DRAM_PLL:
 		setbits_le32(GPC_BASE_ADDR + 0xEC, 1 << 7);
 		setbits_le32(GPC_BASE_ADDR + 0xF8, 1 << 5);
-		writel(SRC_DDR1_ENABLE_MASK, SRC_BASE_ADDR + 0x1004);
 
 		pll_base = &ana_pll->dram_pll_gnrl_ctl;
 		break;
@@ -158,7 +164,7 @@ void dram_enable_bypass(ulong clk_val)
 	}
 
 	if (i == ARRAY_SIZE(imx8mm_dram_bypass_tbl)) {
-		printf("No matched freq table %lu\n", clk_val);
+		printf("%s: No matched freq table %lu\n", __func__, clk_val);
 		return;
 	}
 
@@ -254,9 +260,29 @@ int intpll_configure(enum pll_clocks pll, ulong freq)
 			INTPLL_PRE_DIV_VAL(3) | INTPLL_POST_DIV_VAL(1);
 		break;
 	case MHZ(1200):
-		/* 24 * 0xc8 / 2 / 2 ^ 1 */
+		/* 24 * 0x12c / 3 / 2 ^ 1 */
+		pll_div_ctl_val = INTPLL_MAIN_DIV_VAL(0x12c) |
+			INTPLL_PRE_DIV_VAL(3) | INTPLL_POST_DIV_VAL(1);
+		break;
+	case MHZ(1400):
+		/* 24 * 0x15e / 3 / 2 ^ 1 */
+		pll_div_ctl_val = INTPLL_MAIN_DIV_VAL(0x15e) |
+			INTPLL_PRE_DIV_VAL(3) | INTPLL_POST_DIV_VAL(1);
+		break;
+	case MHZ(1500):
+		/* 24 * 0x177 / 3 / 2 ^ 1 */
+		pll_div_ctl_val = INTPLL_MAIN_DIV_VAL(0x177) |
+			INTPLL_PRE_DIV_VAL(3) | INTPLL_POST_DIV_VAL(1);
+		break;
+	case MHZ(1600):
+		/* 24 * 0xc8 / 3 / 2 ^ 0 */
 		pll_div_ctl_val = INTPLL_MAIN_DIV_VAL(0xc8) |
-			INTPLL_PRE_DIV_VAL(2) | INTPLL_POST_DIV_VAL(1);
+			INTPLL_PRE_DIV_VAL(3) | INTPLL_POST_DIV_VAL(0);
+		break;
+	case MHZ(1800):
+		/* 24 * 0xe1 / 3 / 2 ^ 0 */
+		pll_div_ctl_val = INTPLL_MAIN_DIV_VAL(0xe1) |
+			INTPLL_PRE_DIV_VAL(3) | INTPLL_POST_DIV_VAL(0);
 		break;
 	case MHZ(2000):
 		/* 24 * 0xfa / 3 / 2 ^ 0 */
@@ -546,6 +572,7 @@ int clock_init(void)
 
 #ifdef CONFIG_IMX8MP
 	/* 8MP ROM already set NOC to 800Mhz, only need to configure NOC_IO clk to 600Mhz */
+	/* 8MP ROM already set GIC to 400Mhz, system_pll1_800m with div = 2 */
 	clock_set_target_val(NOC_IO_CLK_ROOT, CLK_ROOT_ON | CLK_ROOT_SOURCE_SEL(2));
 #else
 	clock_set_target_val(NOC_CLK_ROOT, CLK_ROOT_ON | CLK_ROOT_SOURCE_SEL(2));
@@ -636,7 +663,7 @@ int set_clk_eqos(enum enet_freq type)
 	return 0;
 }
 
-int imx_eqos_txclk_set_rate(unsigned long rate)
+int imx_eqos_txclk_set_rate(ulong rate)
 {
 	u32 val;
 	u32 eqos_post_div;
@@ -902,7 +929,7 @@ static u32 decode_fracpll(enum clk_root_src frac_pll)
 		pll_fdiv_ctl1 = readl(&ana_pll->video_pll1_fdiv_ctl1);
 		break;
 	default:
-		printf("Not supported\n");
+		printf("Unsupported clk_root_src %d\n", frac_pll);
 		return 0;
 	}
 
@@ -1054,6 +1081,94 @@ u32 mxc_get_clock(enum mxc_clock clk)
 	return 0;
 }
 
+#if defined(CONFIG_IMX8MP) && defined(CONFIG_DWC_ETH_QOS)
+static int imx8mp_eqos_interface_init(struct udevice *dev,
+				      phy_interface_t interface_type)
+{
+	struct iomuxc_gpr_base_regs *gpr =
+		(struct iomuxc_gpr_base_regs *)IOMUXC_GPR_BASE_ADDR;
+
+	clrbits_le32(&gpr->gpr[1],
+		     IOMUXC_GPR_GPR1_GPR_ENET_QOS_INTF_SEL_MASK |
+		     IOMUXC_GPR_GPR1_GPR_ENET_QOS_RGMII_EN |
+		     IOMUXC_GPR_GPR1_GPR_ENET_QOS_CLK_TX_CLK_SEL |
+		     IOMUXC_GPR_GPR1_GPR_ENET_QOS_CLK_GEN_EN);
+
+	switch (interface_type) {
+	case PHY_INTERFACE_MODE_MII:
+		setbits_le32(&gpr->gpr[1],
+			     IOMUXC_GPR_GPR1_GPR_ENET_QOS_CLK_GEN_EN |
+			     IOMUXC_GPR_GPR1_GPR_ENET_QOS_INTF_SEL_MII);
+		break;
+	case PHY_INTERFACE_MODE_RMII:
+		setbits_le32(&gpr->gpr[1],
+			     IOMUXC_GPR_GPR1_GPR_ENET_QOS_CLK_TX_CLK_SEL |
+			     IOMUXC_GPR_GPR1_GPR_ENET_QOS_CLK_GEN_EN |
+			     IOMUXC_GPR_GPR1_GPR_ENET_QOS_INTF_SEL_RMII);
+		break;
+	case PHY_INTERFACE_MODE_RGMII:
+	case PHY_INTERFACE_MODE_RGMII_ID:
+	case PHY_INTERFACE_MODE_RGMII_RXID:
+	case PHY_INTERFACE_MODE_RGMII_TXID:
+		setbits_le32(&gpr->gpr[1],
+			     IOMUXC_GPR_GPR1_GPR_ENET_QOS_RGMII_EN |
+			     IOMUXC_GPR_GPR1_GPR_ENET_QOS_CLK_GEN_EN |
+			     IOMUXC_GPR_GPR1_GPR_ENET_QOS_INTF_SEL_RGMII);
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+#else
+static int imx8mp_eqos_interface_init(struct udevice *dev,
+				      phy_interface_t interface_type)
+{
+	return 0;
+}
+#endif
+
+#ifdef CONFIG_FEC_MXC
+static int imx8mp_fec_interface_init(struct udevice *dev,
+				     phy_interface_t interface_type,
+				     bool mx8mp)
+{
+	/* i.MX8MP has extra RGMII_EN bit in IOMUXC GPR1 register */
+	const u32 rgmii_en = mx8mp ? IOMUXC_GPR_GPR1_GPR_ENET1_RGMII_EN : 0;
+	struct iomuxc_gpr_base_regs *gpr =
+		(struct iomuxc_gpr_base_regs *)IOMUXC_GPR_BASE_ADDR;
+
+	clrbits_le32(&gpr->gpr[1],
+		     rgmii_en |
+		     IOMUXC_GPR_GPR1_GPR_ENET1_TX_CLK_SEL);
+
+	switch (interface_type) {
+	case PHY_INTERFACE_MODE_MII:
+	case PHY_INTERFACE_MODE_RMII:
+		setbits_le32(&gpr->gpr[1], IOMUXC_GPR_GPR1_GPR_ENET1_TX_CLK_SEL);
+		break;
+	case PHY_INTERFACE_MODE_RGMII:
+	case PHY_INTERFACE_MODE_RGMII_ID:
+	case PHY_INTERFACE_MODE_RGMII_RXID:
+	case PHY_INTERFACE_MODE_RGMII_TXID:
+		setbits_le32(&gpr->gpr[1], rgmii_en);
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+#else
+static int imx8mp_fec_interface_init(struct udevice *dev,
+				     phy_interface_t interface_type,
+				     bool mx8mp)
+{
+	return 0;
+}
+#endif
+
 u32 imx_get_uartclk(void)
 {
 	return mxc_get_clock(MXC_UART_CLK);
@@ -1169,3 +1284,28 @@ U_BOOT_CMD(
 	""
 );
 #endif
+
+int board_interface_eth_init(struct udevice *dev, phy_interface_t interface_type)
+{
+	if (IS_ENABLED(CONFIG_IMX8MM) &&
+	    IS_ENABLED(CONFIG_FEC_MXC) &&
+	    device_is_compatible(dev, "fsl,imx8mm-fec"))
+		return imx8mp_fec_interface_init(dev, interface_type, false);
+
+	if (IS_ENABLED(CONFIG_IMX8MN) &&
+	    IS_ENABLED(CONFIG_FEC_MXC) &&
+	    device_is_compatible(dev, "fsl,imx8mn-fec"))
+		return imx8mp_fec_interface_init(dev, interface_type, false);
+
+	if (IS_ENABLED(CONFIG_IMX8MP) &&
+	    IS_ENABLED(CONFIG_FEC_MXC) &&
+	    device_is_compatible(dev, "fsl,imx8mp-fec"))
+		return imx8mp_fec_interface_init(dev, interface_type, true);
+
+	if (IS_ENABLED(CONFIG_IMX8MP) &&
+	    IS_ENABLED(CONFIG_DWC_ETH_QOS) &&
+	    device_is_compatible(dev, "nxp,imx8mp-dwmac-eqos"))
+		return imx8mp_eqos_interface_init(dev, interface_type);
+
+	return -EINVAL;
+}

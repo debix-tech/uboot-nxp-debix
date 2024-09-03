@@ -5,7 +5,6 @@
  * Copyright (C) 2019 Marek Vasut <marek.vasut@gmail.com>
  */
 
-#include <common.h>
 #include <cpu_func.h>
 #include <image.h>
 #include <init.h>
@@ -55,6 +54,6 @@ void s_init(void)
 {
 }
 
-void reset_cpu(ulong addr)
+void reset_cpu(void)
 {
 }

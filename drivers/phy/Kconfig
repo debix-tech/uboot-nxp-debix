@@ -64,6 +64,22 @@ config MIPI_DPHY_HELPERS
 	help
 	  Provides a number of helpers a core functions for MIPI D-PHY drivers.
 
+config AB8500_USB_PHY
+	bool "AB8500 USB PHY Driver"
+	depends on PHY && PMIC_AB8500
+	help
+	  Support for the USB OTG PHY in ST-Ericsson AB8500.
+
+config APPLE_ATCPHY
+       bool "Apple Type-C PHY Driver"
+       depends on PHY && ARCH_APPLE
+       default y
+       help
+         Support for the Apple Type-C PHY.
+
+	 This is a dummy driver since the PHY is initialized
+	 sufficiently by previous stage firmware.
+
 config BCM6318_USBH_PHY
 	bool "BCM6318 USBH PHY support"
 	depends on PHY && ARCH_BMIPS
@@ -137,12 +153,6 @@ config STI_USB_PHY
 	  used by USB2 and USB3 Host controllers available on
 	  STiH407 SoC families.
 
-config PHY_QCOM_IPQ4019_USB
-	tristate "Qualcomm IPQ4019 USB PHY driver"
-	depends on PHY && ARCH_IPQ40XX
-	help
-	  Support for the USB PHY-s on Qualcomm IPQ40xx SoC-s.
-
 config PHY_RCAR_GEN2
 	tristate "Renesas R-Car Gen2 USB PHY"
 	depends on PHY && RCAR_GEN2
@@ -190,7 +200,7 @@ config MESON_GXL_USB_PHY
 
 config MESON_G12A_USB_PHY
 	bool "Amlogic Meson G12A USB PHYs"
-	depends on PHY && ARCH_MESON && MESON_G12A
+	depends on PHY && ARCH_MESON && (MESON_G12A || MESON_A1)
 	imply REGMAP
 	help
 	  This is the generic phy driver for the Amlogic Meson G12A
@@ -213,14 +223,6 @@ config MESON_AXG_MIPI_PCIE_ANALOG_PHY
 	help
 	  This is the generic phy driver for the Amlogic Meson AXG
 	  MIPI PCIe Analog PHY.
-
-config MSM8916_USB_PHY
-	bool "Qualcomm MSM8916 USB PHY support"
-	depends on PHY
-	help
-          Support the USB PHY in msm8916
-
-	  This PHY is found on qualcomm dragonboard410c development board.
 
 config OMAP_USB2_PHY
 	bool "Support OMAP's USB2 PHY"
@@ -260,13 +262,52 @@ config MT76X8_USB_PHY
 config PHY_MTK_TPHY
 	bool "MediaTek T-PHY Driver"
 	depends on PHY
-	depends on ARCH_MEDIATEK
+	depends on ARCH_MEDIATEK || SOC_MT7621
 	help
 	  MediaTek T-PHY driver supports usb2.0, usb3.0 ports, PCIe and
 	  SATA, and meanwhile supports two version T-PHY which have
 	  different banks layout, the T-PHY with shared banks between
 	  multi-ports is first version, otherwise is second veriosn,
 	  so you can easily distinguish them by banks layout.
+
+config PHY_NPCM_USB
+	bool "Nuvoton NPCM USB PHY support"
+	depends on PHY
+	depends on ARCH_NPCM
+	help
+	  Support the USB PHY in NPCM SoCs
+
+config PHY_IMX8MQ_USB
+	bool "NXP i.MX8MQ/i.MX8MP USB PHY Driver"
+	depends on PHY
+	depends on IMX8MQ || IMX8MP || IMX95
+	help
+	  Support the USB3.0 PHY in NXP i.MX8MQ or i.MX8MP SoC
+
+config PHY_IMX93_MIPI_DPHY
+	bool "NXP i.MX93 MIPI DPHY Driver"
+	depends on PHY
+	depends on ARCH_IMX9
+	select REGMAP
+	help
+	  Enable this to add support for the Synopsys DW MIPI DPHY as found
+	  on NXP's i.MX93 SoC.
+
+config PHY_IMX8MP_LVDS_PHY
+	bool "NXP i.MX8MP/93/95 MIPI DPHY Driver"
+	depends on PHY
+	depends on ARCH_IMX9 || IMX8MP
+	select REGMAP
+	help
+	  Enable this to add support for the LDB PHY as found on NXP's
+	  i.MX8MP/i.MX93/i.MX95 SoC.
+
+config PHY_XILINX_ZYNQMP
+	tristate "Xilinx ZynqMP PHY driver"
+	depends on PHY && ARCH_ZYNQMP
+	help
+	  Enable this to support ZynqMP High Speed Gigabit Transceiver
+	  that is part of ZynqMP SoC.
 
 config CDNS3_USB_PHY
 	bool "Support CDNS3 USB PHY"
@@ -277,4 +318,9 @@ config CDNS3_USB_PHY
 	  This PHY is found on CDNS3 IP devices supporting USB.
 
 source "drivers/phy/rockchip/Kconfig"
+source "drivers/phy/cadence/Kconfig"
+source "drivers/phy/ti/Kconfig"
+source "drivers/phy/qcom/Kconfig"
+source "drivers/phy/renesas/Kconfig"
+
 endmenu

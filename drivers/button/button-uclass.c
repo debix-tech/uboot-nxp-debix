@@ -5,6 +5,8 @@
  * Based on led-uclass.c
  */
 
+#define LOG_CATEGORY UCLASS_BUTTON
+
 #include <common.h>
 #include <button.h>
 #include <dm.h>
@@ -34,6 +36,16 @@ enum button_state_t button_get_state(struct udevice *dev)
 		return -ENOSYS;
 
 	return ops->get_state(dev);
+}
+
+int button_get_code(struct udevice *dev)
+{
+	struct button_ops *ops = button_get_ops(dev);
+
+	if (!ops->get_code)
+		return -ENOSYS;
+
+	return ops->get_code(dev);
 }
 
 UCLASS_DRIVER(button) = {

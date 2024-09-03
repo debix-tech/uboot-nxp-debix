@@ -20,6 +20,7 @@
 #include <asm/mach-imx/iomux-v3.h>
 #include <asm/mach-imx/mxc_i2c.h>
 #include <asm/io.h>
+#include <asm/sections.h>
 #include <linux/sizes.h>
 #include <linux/delay.h>
 #include <common.h>
@@ -32,7 +33,6 @@
 #include <usb.h>
 #include <usb/ehci-ci.h>
 #if defined(CONFIG_MXC_EPDC)
-#include <lcd.h>
 #include <mxc_epdc_fb.h>
 #endif
 
@@ -82,7 +82,7 @@ phys_size_t get_effective_memsize(void)
 
 int dram_init_banksize(void)
 {
-	gd->bd->bi_dram[0].start = CONFIG_SYS_SDRAM_BASE;
+	gd->bd->bi_dram[0].start = CFG_SYS_SDRAM_BASE;
 	gd->bd->bi_dram[0].size = gd->ram_size;
 
 	return 0;
@@ -195,7 +195,7 @@ static void setup_iomux_uart(void)
 	imx_iomux_v3_setup_multiple_pads(uart1_pads, ARRAY_SIZE(uart1_pads));
 }
 
-#ifdef CONFIG_SYS_I2C
+#ifdef CONFIG_SYS_I2C_LEGACY
 #define PC	MUX_PAD_CTRL(I2C_PAD_CTRL)
 /* I2C1 for PMIC */
 struct i2c_pads_info i2c_pad_info1 = {
@@ -212,7 +212,7 @@ struct i2c_pads_info i2c_pad_info1 = {
 };
 #endif
 
-#ifdef CONFIG_POWER
+#ifdef CONFIG_POWER_LEGACY
 int power_init_board(void)
 {
 	struct pmic *pfuze;
@@ -297,7 +297,7 @@ int power_init_board(void)
 #endif
 
 #ifdef CONFIG_LDO_BYPASS_CHECK
-#ifdef CONFIG_POWER
+#ifdef CONFIG_POWER_LEGACY
 void ldo_mode_set(int ldo_bypass)
 {
 	u32 value;
@@ -644,7 +644,7 @@ int board_init(void)
 	/* address of boot parameters */
 	gd->bd->bi_boot_params = PHYS_SDRAM + 0x100;
 
-#ifdef CONFIG_SYS_I2C
+#ifdef CONFIG_SYS_I2C_LEGACY
 	setup_i2c(0, CONFIG_SYS_I2C_SPEED, 0x7f, &i2c_pad_info1);
 #endif
 
@@ -717,30 +717,6 @@ int checkboard(void)
 
 	return 0;
 }
-
-#ifdef CONFIG_MXC_KPD
-#define MX6SL_KEYPAD_CTRL (PAD_CTL_HYS | PAD_CTL_PKE | PAD_CTL_PUE | \
-			   PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_120ohm)
-
-iomux_v3_cfg_t const mxc_kpd_pads[] = {
-	(MX6_PAD_KEY_COL0__KPP_COL_0 | MUX_PAD_CTRL(NO_PAD_CTRL)),
-	(MX6_PAD_KEY_COL1__KPP_COL_1 | MUX_PAD_CTRL(NO_PAD_CTRL)),
-	(MX6_PAD_KEY_COL2__KPP_COL_2 | MUX_PAD_CTRL(NO_PAD_CTRL)),
-	(MX6_PAD_KEY_COL3__KPP_COL_3 | MUX_PAD_CTRL(NO_PAD_CTRL)),
-
-	(MX6_PAD_KEY_ROW0__KPP_ROW_0 | MUX_PAD_CTRL(MX6SL_KEYPAD_CTRL)),
-	(MX6_PAD_KEY_ROW1__KPP_ROW_1 | MUX_PAD_CTRL(MX6SL_KEYPAD_CTRL)),
-	(MX6_PAD_KEY_ROW2__KPP_ROW_2 | MUX_PAD_CTRL(MX6SL_KEYPAD_CTRL)),
-	(MX6_PAD_KEY_ROW3__KPP_ROW_3 | MUX_PAD_CTRL(MX6SL_KEYPAD_CTRL)),
-};
-int setup_mxc_kpd(void)
-{
-	imx_iomux_v3_setup_multiple_pads(mxc_kpd_pads,
-					 ARRAY_SIZE(mxc_kpd_pads));
-
-	return 0;
-}
-#endif /*CONFIG_MXC_KPD*/
 
 #ifdef CONFIG_SPL_BUILD
 #include <spl.h>

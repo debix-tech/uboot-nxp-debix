@@ -7,10 +7,10 @@ obj-y += lowlevel.o
 obj-y += soc.o
 ifndef CONFIG_SPL_BUILD
 obj-$(CONFIG_MP) += mp.o spintable.o
+obj-$(CONFIG_OF_LIBFDT_OVERLAY) += lowlevel_init.o dt_optee.o
 obj-$(CONFIG_OF_LIBFDT) += fdt.o
 endif
 obj-$(CONFIG_SPL) += spl.o
-obj-$(CONFIG_$(SPL_)FSL_LS_PPA) += ppa.o
 
 ifneq ($(CONFIG_FSL_LSCH3),)
 obj-y += fsl_lsch3_speed.o

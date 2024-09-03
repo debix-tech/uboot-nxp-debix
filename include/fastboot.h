@@ -14,6 +14,16 @@
 
 #define FASTBOOT_VERSION	"0.4"
 
+/*
+ * Signals u-boot fastboot code to send multiple responses by
+ * calling response generating function repeatedly until a OKAY/FAIL
+ * is generated as final response.
+ *
+ * This status code is only used internally to signal, must NOT
+ * be sent to host.
+ */
+#define FASTBOOT_MULTIRESPONSE_START	("MORE")
+
 /* The 64 defined bytes plus \0 */
 #define FASTBOOT_COMMAND_LEN	(64 + 1)
 #define FASTBOOT_RESPONSE_LEN	(64 + 1)
@@ -24,10 +34,8 @@
 enum {
 	FASTBOOT_COMMAND_GETVAR = 0,
 	FASTBOOT_COMMAND_DOWNLOAD,
-#if CONFIG_IS_ENABLED(FASTBOOT_FLASH)
 	FASTBOOT_COMMAND_FLASH,
 	FASTBOOT_COMMAND_ERASE,
-#endif
 	FASTBOOT_COMMAND_BOOT,
 	FASTBOOT_COMMAND_CONTINUE,
 	FASTBOOT_COMMAND_REBOOT,
@@ -35,33 +43,21 @@ enum {
 	FASTBOOT_COMMAND_REBOOT_FASTBOOTD,
 	FASTBOOT_COMMAND_REBOOT_RECOVERY,
 	FASTBOOT_COMMAND_SET_ACTIVE,
-#if CONFIG_IS_ENABLED(FASTBOOT_CMD_OEM_FORMAT)
 	FASTBOOT_COMMAND_OEM_FORMAT,
-#endif
-#if CONFIG_IS_ENABLED(FASTBOOT_CMD_OEM_PARTCONF)
 	FASTBOOT_COMMAND_OEM_PARTCONF,
-#endif
-#if CONFIG_IS_ENABLED(FASTBOOT_CMD_OEM_BOOTBUS)
 	FASTBOOT_COMMAND_OEM_BOOTBUS,
-#endif
-#if CONFIG_IS_ENABLED(FASTBOOT_UUU_SUPPORT)
+	FASTBOOT_COMMAND_OEM_RUN,
+	FASTBOOT_COMMAND_OEM_CONSOLE,
 	FASTBOOT_COMMAND_ACMD,
 	FASTBOOT_COMMAND_UCMD,
-#endif
-#ifdef CONFIG_FSL_FASTBOOT
 	FASTBOOT_COMMAND_UPLOAD,
 	FASTBOOT_COMMAND_GETSTAGED,
-#ifdef CONFIG_FASTBOOT_LOCK
+#if defined(CONFIG_FASTBOOT_LOCK) || defined(CONFIG_IMX_MATTER_TRUSTY)
 	FASTBOOT_COMMAND_FLASHING,
 	FASTBOOT_COMMAND_OEM,
 #endif
-#ifdef CONFIG_AVB_SUPPORT
 	FASTBOOT_COMMAND_SETACTIVE,
-#endif
-#ifdef CONFIG_AVB_ATX
 	FASTBOOT_COMMAND_STAGE,
-#endif
-#endif
 #ifdef CONFIG_ANDROID_RECOVERY
 	FASTBOOT_COMMAND_RECOVERY_FASTBOOT,
 #endif
@@ -153,6 +149,15 @@ void fastboot_init(void *buf_addr, u32 buf_size);
 void fastboot_boot(void);
 
 /**
+ * fastboot_handle_boot() - Shared implementation of system reaction to
+ * fastboot commands
+ *
+ * Making desceisions about device boot state (stay in fastboot, reboot
+ * to bootloader, reboot to OS, etc).
+ */
+void fastboot_handle_boot(int command, bool success);
+
+/**
  * fastboot_handle_command() - Handle fastboot command
  *
  * @cmd_string: Pointer to command string
@@ -192,12 +197,18 @@ void fastboot_data_download(const void *fastboot_data,
  */
 void fastboot_data_complete(char *response);
 
-#if CONFIG_IS_ENABLED(FASTBOOT_UUU_SUPPORT)
+/**
+ * fastboot_handle_multiresponse() - Called for each response to send
+ *
+ * @cmd: Command id that requested multiresponse
+ * @response: Pointer to fastboot response buffer
+ */
+void fastboot_multiresponse(int cmd, char *response);
+
 void fastboot_acmd_complete(void);
-#endif
 
 int fastboot_tx_write_more(const char *buffer);
-
+int fastboot_tx_write_more_s(const void *buffer, unsigned int buffer_size);
 int fastboot_tx_write(const char *buffer, unsigned int buffer_size);
 
 #endif /* _FASTBOOT_H_ */

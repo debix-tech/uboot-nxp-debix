@@ -421,7 +421,9 @@ static void usb_show_tree_graph(struct usb_device *dev, char *pre)
 		 * Ignore emulators and block child devices, we only want
 		 * real devices
 		 */
-		if ((device_get_uclass_id(child) != UCLASS_USB_EMUL) &&
+		if (udev &&
+		    (device_get_uclass_id(child) != UCLASS_BOOTDEV) &&
+		    (device_get_uclass_id(child) != UCLASS_USB_EMUL) &&
 		    (device_get_uclass_id(child) != UCLASS_BLK)) {
 			usb_show_tree_graph(udev, pre);
 			pre[index] = 0;
@@ -591,16 +593,6 @@ static void do_usb_start(void)
 	drv_usb_kbd_init();
 # endif
 #endif /* !CONFIG_DM_USB */
-#ifdef CONFIG_USB_HOST_ETHER
-# ifdef CONFIG_DM_ETH
-#  ifndef CONFIG_DM_USB
-#   error "You must use CONFIG_DM_USB if you want to use CONFIG_USB_HOST_ETHER with CONFIG_DM_ETH"
-#  endif
-# else
-	/* try to recognize ethernet devices immediately */
-	usb_ether_curr_dev = usb_host_eth_scan(1);
-# endif
-#endif
 }
 
 #ifdef CONFIG_DM_USB
@@ -614,10 +606,12 @@ static void usb_show_info(struct usb_device *udev)
 	     child;
 	     device_find_next_child(&child)) {
 		if (device_active(child) &&
+		    (device_get_uclass_id(child) != UCLASS_BOOTDEV) &&
 		    (device_get_uclass_id(child) != UCLASS_USB_EMUL) &&
 		    (device_get_uclass_id(child) != UCLASS_BLK)) {
 			udev = dev_get_parent_priv(child);
-			usb_show_info(udev);
+			if (udev)
+				usb_show_info(udev);
 		}
 	}
 }
@@ -630,7 +624,6 @@ static int do_usb(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 {
 	struct usb_device *udev = NULL;
 	int i;
-	extern char usb_started;
 
 	if (argc < 2)
 		return CMD_RET_USAGE;
@@ -690,7 +683,7 @@ static int do_usb(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 			 * have multiple controllers and the device numbering
 			 * starts at 1 on each bus.
 			 */
-			i = simple_strtoul(argv[2], NULL, 10);
+			i = dectoul(argv[2], NULL);
 			printf("config for device %d\n", i);
 			udev = usb_find_device(i);
 			if (udev == NULL) {
@@ -706,20 +699,20 @@ static int do_usb(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 	if (strncmp(argv[1], "test", 4) == 0) {
 		if (argc < 5)
 			return CMD_RET_USAGE;
-		i = simple_strtoul(argv[2], NULL, 10);
+		i = dectoul(argv[2], NULL);
 		udev = usb_find_device(i);
 		if (udev == NULL) {
 			printf("Device %d does not exist.\n", i);
 			return 1;
 		}
-		i = simple_strtoul(argv[3], NULL, 10);
+		i = dectoul(argv[3], NULL);
 		return usb_test(udev, i, argv[4]);
 	}
 #ifdef CONFIG_USB_STORAGE
 	if (strncmp(argv[1], "stor", 4) == 0)
 		return usb_stor_info();
 
-	return blk_common_cmd(argc, argv, IF_TYPE_USB, &usb_stor_curr_dev);
+	return blk_common_cmd(argc, argv, UCLASS_USB, &usb_stor_curr_dev);
 #else
 	return CMD_RET_USAGE;
 #endif /* CONFIG_USB_STORAGE */

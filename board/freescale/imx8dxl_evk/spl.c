@@ -17,6 +17,7 @@
 #include <dm/device-internal.h>
 #include <dm/lists.h>
 #include <bootm.h>
+#include <asm/sections.h>
 #include <asm/mach-imx/boot_mode.h>
 
 DECLARE_GLOBAL_DATA_PTR;
@@ -27,11 +28,7 @@ int spl_board_boot_device(enum boot_device boot_dev_spl)
 	case MMC1_BOOT:
 		return BOOT_DEVICE_MMC1;
 	case SD2_BOOT:
-#ifdef CONFIG_TARGET_IMX8DXL_DDR3_VAL
-		return BOOT_DEVICE_MMC1;
-#else
 		return BOOT_DEVICE_MMC2_2;
-#endif
 	case FLEXSPI_BOOT:
 		return BOOT_DEVICE_SPI;
 	case NAND_BOOT:
@@ -46,6 +43,8 @@ int spl_board_boot_device(enum boot_device boot_dev_spl)
 void spl_board_init(void)
 {
 	struct udevice *dev;
+
+	uclass_get_device_by_driver(UCLASS_MISC, DM_DRIVER_GET(imx8_scu), &dev);
 
 	uclass_find_first_device(UCLASS_MISC, &dev);
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright 2020 NXP
+ * Copyright 2021 NXP
  */
 
 #include <common.h>
@@ -18,17 +18,26 @@
 #include <dm/device-internal.h>
 #include <dm/lists.h>
 #include <asm/arch/ddr.h>
-#include <asm/arch/upower.h>
 #include <asm/arch/rdc.h>
+#include <asm/arch/upower.h>
+#include <asm/mach-imx/ele_api.h>
+#include <asm/sections.h>
 #include <asm/mach-imx/boot_mode.h>
-#include <asm/arch/s400_api.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
 void spl_dram_init(void)
 {
-	init_clk_ddr();
-	ddr_init(&dram_timing);
+	/* Reboot in dual boot setting no need to init ddr again */
+	bool ddr_enable = pcc_clock_is_enable(5, LPDDR4_PCC5_SLOT);
+
+	if (!ddr_enable) {
+		init_clk_ddr();
+		ddr_init(&dram_timing);
+	} else {
+		/* reinit pfd/pfddiv and lpavnic except pll4*/
+		cgc2_pll4_init(false);
+	}
 }
 
 u32 spl_boot_device(void)
@@ -78,33 +87,50 @@ void setup_iomux_pmic(void)
 
 int power_init_board(void)
 {
-	if (IS_ENABLED(CONFIG_IMX8ULP_LD_MODE)) {
-		/* Set buck3 to 0.9v LD */
-		upower_pmic_i2c_write(0x18, 0x28);
-	} else if (IS_ENABLED(CONFIG_IMX8ULP_ND_MODE)) {
+	/* Set buck2 ramp-up speed 1us */
+	upower_pmic_i2c_write(0x14, 0x39);
+	/* Set buck3 ramp-up speed 1us */
+	upower_pmic_i2c_write(0x21, 0x39);
+	/* Set buck3out min limit 0.625v */
+	upower_pmic_i2c_write(0x2d, 0x2);
+
+	if (IS_ENABLED(CONFIG_IMX8ULP_ND_MODE)) {
 		/* Set buck3 to 1.0v ND */
-		upower_pmic_i2c_write(0x20, 0x28);
+		upower_pmic_i2c_write(0x22, 0x20);
 	} else {
 		/* Set buck3 to 1.1v OD */
 		upower_pmic_i2c_write(0x22, 0x28);
-
 	}
 
 	return 0;
 }
 
+void display_ele_fw_version(void)
+{
+	u32 fw_version, sha1, res = 0;
+	int ret;
+
+	ret = ele_get_fw_version(&fw_version, &sha1, &res);
+	if (ret) {
+		printf("ele get firmware version failed %d, 0x%x\n", ret, res);
+	} else {
+		printf("ELE firmware version %u.%u.%u-%x",
+		       (fw_version & (0x00ff0000)) >> 16,
+		       (fw_version & (0x0000fff0)) >> 4,
+		       (fw_version & (0x0000000f)), sha1);
+		((fw_version & (0x80000000)) >> 31) == 1 ? puts("-dirty\n") : puts("\n");
+	}
+}
+
 void spl_board_init(void)
 {
-	struct udevice *dev;
 	u32 res;
-	int node, ret;
+	int ret;
+	struct udevice *dev;
 
-	node = fdt_node_offset_by_compatible(gd->fdt_blob, -1, "fsl,imx8ulp-mu");
-	ret = uclass_get_device_by_of_offset(UCLASS_MISC, node, &dev);
-	if (ret) {
+	ret = imx8ulp_dm_post_init();
+	if (ret)
 		return;
-	}
-	device_probe(dev);
 
 	board_early_init_f();
 
@@ -112,14 +138,14 @@ void spl_board_init(void)
 
 	puts("Normal Boot\n");
 
+	display_ele_fw_version();
+
 	/* Set iomuxc0 for pmic when m33 is not booted */
 	if (!m33_image_booted())
 		setup_iomux_pmic();
 
-	/* Load the lposc fuse for single boot to work around ROM issue,
-	*  The fuse depends on S400 to read.
-	*/
-	if (is_soc_rev(CHIP_REV_1_0) && get_boot_mode() == SINGLE_BOOT)
+	/* Load the lposc fuse to work around ROM issue. The fuse depends on ELE to read. */
+	if (is_soc_rev(CHIP_REV_1_0))
 		load_lposc_fuse();
 
 	upower_init();
@@ -128,9 +154,6 @@ void spl_board_init(void)
 
 	clock_init_late();
 
-	/* DDR initialization */
-	spl_dram_init();
-
 	/* This must place after upower init, so access to MDA and MRC are valid */
 	/* Init XRDC MDA  */
 	xrdc_init_mda();
@@ -138,35 +161,49 @@ void spl_board_init(void)
 	/* Init XRDC MRC for VIDEO, DSP domains */
 	xrdc_init_mrc();
 
+	xrdc_init_pdac_msc();
+
+	/* DDR initialization */
+	spl_dram_init();
+
 	/* Call it after PS16 power up */
 	set_lpav_qos();
 
-	/* Asks S400 to release CAAM for A35 core */
-	ret = ahab_release_caam(7, &res);
+#if defined(CONFIG_IMX8ULP_FIXED_OP_RANGE)
+	/* Set operation range for PTE/PTF */
+	set_apd_gpiox_op_range(PTE, RANGE_1P8V);
+	set_apd_gpiox_op_range(PTF, RANGE_1P8V);
+	/* disable PTD cell compensation */
+	set_apd_gpiox_comp_cell(PTD, false);
+#endif
+
+	/* Enable A35 access to the CAAM */
+	ret = ele_release_caam(0x7, &res);
 	if (!ret) {
+		if (((res >> 8) & 0xff) == ELE_NON_SECURE_STATE_FAILURE_IND)
+			printf("Warning: CAAM is in non-secure state, 0x%x\n", res);
 
 		/* Only two UCLASS_MISC devicese are present on the platform. There
 		 * are MU and CAAM. Here we initialize CAAM once it's released by
-		 * S400 firmware..
+		 * ELE firmware..
 		 */
-		node = fdt_node_offset_by_compatible(gd->fdt_blob, -1, "fsl,sec-v4.0");
-		ret = uclass_get_device_by_of_offset(UCLASS_MISC, node, &dev);
-		if (ret) {
-			return;
+		if (IS_ENABLED(CONFIG_FSL_CAAM)) {
+			ret = uclass_get_device_by_driver(UCLASS_MISC, DM_DRIVER_GET(caam_jr), &dev);
+			if (ret)
+				printf("Failed to initialize caam_jr: %d\n", ret);
 		}
-		device_probe(dev);
+	}
+
+	/*
+	 * RNG start only available on the A1 soc revision.
+	 * Check some JTAG register for the SoC revision.
+	 */
+	if (!is_soc_rev(CHIP_REV_1_0)) {
+		ret = ele_start_rng();
+		if (ret)
+			printf("Fail to start RNG: %d\n", ret);
 	}
 }
-
-#ifdef CONFIG_SPL_LOAD_FIT
-int board_fit_config_name_match(const char *name)
-{
-	/* Just empty function now - can't decide what to choose */
-	debug("%s: %s\n", __func__, name);
-
-	return 0;
-}
-#endif
 
 void board_init_f(ulong dummy)
 {

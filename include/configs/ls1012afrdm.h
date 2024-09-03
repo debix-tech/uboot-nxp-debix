@@ -10,19 +10,14 @@
 #include "ls1012a_common.h"
 
 /* DDR */
-#define CONFIG_DIMM_SLOTS_PER_CTLR	1
-#define CONFIG_CHIP_SELECTS_PER_CTRL	1
-#define CONFIG_SYS_SDRAM_SIZE		0x20000000
-#define CONFIG_CHIP_SELECTS_PER_CTRL	1
+#define CFG_SYS_SDRAM_SIZE		0x20000000
 
-#ifndef CONFIG_SPL_BUILD
 #undef BOOT_TARGET_DEVICES
 #define BOOT_TARGET_DEVICES(func) \
 	func(USB, usb, 0)
-#endif
 
-#undef CONFIG_EXTRA_ENV_SETTINGS
-#define CONFIG_EXTRA_ENV_SETTINGS		\
+#undef CFG_EXTRA_ENV_SETTINGS
+#define CFG_EXTRA_ENV_SETTINGS		\
 	"verify=no\0"				\
 	"fdt_high=0xffffffffffffffff\0"		\
 	"kernel_addr=0x01000000\0"		\
@@ -48,26 +43,16 @@
 		      "run scan_dev_for_boot; "	\
 		  "fi; "			\
 	      "done\0"				\
-	"scan_dev_for_boot="				  \
-		"echo Scanning ${devtype} "		  \
-				"${devnum}:${distro_bootpart}...; "  \
-		"for prefix in ${boot_prefixes}; do "	  \
-			"run scan_dev_for_scripts; "	  \
-		"done;"					  \
-		"\0"					  \
 	"installer=load usb 0:2 $load_addr "	\
 		   "/flex_installer_arm64.itb; "	\
 		   "bootm $load_addr#$board\0"	\
-	"qspi_bootcmd=pfe stop; echo Trying load from qspi..;"	\
+	"qspi_bootcmd=echo Trying load from qspi..;"	\
 		"sf probe && sf read $load_addr "	\
 		"$kernel_addr $kernel_size && bootm $load_addr#$board\0"
 
-#undef CONFIG_BOOTCOMMAND
 #ifdef CONFIG_TFABOOT
 #undef QSPI_NOR_BOOTCOMMAND
-#define QSPI_NOR_BOOTCOMMAND "pfe stop;run distro_bootcmd;run qspi_bootcmd"
-#else
-#define CONFIG_BOOTCOMMAND "pfe stop;run distro_bootcmd;run qspi_bootcmd"
+#define QSPI_NOR_BOOTCOMMAND "run distro_bootcmd;run qspi_bootcmd"
 #endif
 
 #endif /* __LS1012ARDB_H__ */

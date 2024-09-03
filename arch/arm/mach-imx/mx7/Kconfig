@@ -6,6 +6,7 @@ config MX7
 	select ARCH_SUPPORT_PSCI
 	select CPU_V7_HAS_NONSEC
 	select CPU_V7_HAS_VIRT
+	select IOMUX_LPSR
 	select ROM_UNIFIED_SECTIONS
 	select SYSCOUNTER_TIMER
 	imply CMD_FUSE
@@ -16,7 +17,7 @@ config MX7D
 	select ROM_UNIFIED_SECTIONS
 	imply CMD_FUSE
 
-config SYS_TEXT_BASE
+config TEXT_BASE
 	default 0x87800000
 
 config SPL_TEXT_BASE
@@ -34,6 +35,15 @@ choice
 
 config TARGET_CL_SOM_IMX7
 	bool "CL-SOM-iMX7"
+	select DM
+	select DM_THERMAL
+	select MX7D
+	select SUPPORT_SPL
+	imply CMD_DM
+
+config TARGET_IMX7_CM
+	bool "Ronetix iMX7-CM"
+	select BOARD_LATE_INIT
 	select DM
 	select DM_THERMAL
 	select MX7D
@@ -58,7 +68,6 @@ config TARGET_MX7DSABRESD
 	imply CMD_DM
 	select FSL_CAAM
 	select FSL_BLOB
-	select MISC
 
 config TARGET_MX7D_12X12_LPDDR3_VAL
 	bool "Support mx7d_12x12_lpddr3_val"
@@ -109,6 +118,14 @@ config TARGET_PICO_IMX7D
 	select SUPPORT_SPL
 	imply CMD_DM
 
+config TARGET_SMEGW01
+	bool "smegw01"
+	select BOARD_LATE_INIT
+	select DM
+	select DM_THERMAL
+	select MX7D
+	imply CMD_DM
+
 config TARGET_WARP7
 	bool "warp7"
 	select BOARD_LATE_INIT
@@ -122,6 +139,7 @@ config TARGET_COLIBRI_IMX7
 	select DM
 	select DM_SERIAL
 	select DM_THERMAL
+	select MX7D
 	imply CMD_DM
 
 endchoice
@@ -130,12 +148,14 @@ config SYS_SOC
 	default "mx7"
 
 source "board/compulab/cl-som-imx7/Kconfig"
+source "board/ronetix/imx7-cm/Kconfig"
 source "board/freescale/mx7dsabresd/Kconfig"
 source "board/freescale/mx7d_12x12_lpddr3_val/Kconfig"
 source "board/freescale/mx7d_12x12_ddr3_val/Kconfig"
 source "board/freescale/mx7d_19x19_ddr3_val/Kconfig"
 source "board/freescale/mx7d_19x19_lpddr3_val/Kconfig"
 source "board/novtech/meerkat96/Kconfig"
+source "board/storopack/smegw01/Kconfig"
 source "board/technexion/pico-imx7d/Kconfig"
 source "board/toradex/colibri_imx7/Kconfig"
 source "board/warp7/Kconfig"

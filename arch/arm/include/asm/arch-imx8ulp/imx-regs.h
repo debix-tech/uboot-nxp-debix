@@ -10,6 +10,8 @@
 #include <linux/bitops.h>
 #include <linux/sizes.h>
 
+#define SRAM0_BASE          0x22010000
+
 #define CAAM_ARB_BASE_ADDR      0x26000000
 
 #define PBRIDGE0_BASE		0x28000000
@@ -23,7 +25,7 @@
 
 #define WDG3_RBASE		0x292a0000UL
 
-#define SIM_SEC_BASE_ADDR 0x2802B000
+#define SIM_SEC_BASE_ADDR	0x2802B000
 
 #define CGC1_SOSCDIV_ADDR	0x292C0108
 #define CGC1_FRODIV_ADDR	0x292C0208
@@ -62,13 +64,39 @@
 #define AVD_SIM_LPDDR_CTRL	(AVD_SIM_BASE_ADDR + 0x14)
 #define AVD_SIM_LPDDR_CTRL2	(AVD_SIM_BASE_ADDR + 0x18)
 
-#define CONFIG_SYS_FSL_SEC_ADDR	0x292e0000
-#define CONFIG_SYS_FSL_MAX_NUM_OF_SEC	1
+#define CFG_SYS_FSL_SEC_ADDR	0x292e0000
 
 #define FEC_QUIRK_ENET_MAC
 
+#define IMG_CONTAINER_BASE             (0x22010000UL)
+
 #if !(defined(__KERNEL_STRICT_NAMES) || defined(__ASSEMBLY__))
 #include <asm/types.h>
+
+struct mu_type {
+	u32 ver;
+	u32 par;
+	u32 cr;
+	u32 sr;
+	u32 reserved0[60];
+	u32 fcr;
+	u32 fsr;
+	u32 reserved1[2];
+	u32 gier;
+	u32 gcr;
+	u32 gsr;
+	u32 reserved2;
+	u32 tcr;
+	u32 tsr;
+	u32 rcr;
+	u32 rsr;
+	u32 reserved3[52];
+	u32 tr[16];
+	u32 reserved4[16];
+	u32 rr[16];
+	u32 reserved5[14];
+	u32 mu_attr;
+};
 
 struct usbphy_regs {
 	u32	usbphy_pwd;			/* 0x000 */
@@ -198,6 +226,18 @@ struct adc_regs {
 	u32	cv4;		/* 0x20c */
 	u32	reserved6[60];	/* 0x210 */
 	u32	resfifo0;	/* 0x300 */
+};
+
+enum apd_dgo_gpiox_op_range {
+	RANGE_AUTO = 0,
+	RANGE_1P8V,
+	RANGE_3V3V,
+};
+
+enum apd_dgo_gpiox_port {
+	PTE = 0,
+	PTF,
+	PTD,
 };
 
 #include <stdbool.h>

@@ -18,6 +18,7 @@
 #include <asm/mach-imx/boot_mode.h>
 #include <asm/mach-imx/mxc_i2c.h>
 #include <asm/io.h>
+#include <asm/sections.h>
 #include <common.h>
 #include <env.h>
 #include <fsl_esdhc_imx.h>
@@ -325,7 +326,7 @@ int board_phy_config(struct phy_device *phydev)
 }
 #endif
 
-#ifdef CONFIG_DM_VIDEO
+#ifdef CONFIG_VIDEO
 static iomux_v3_cfg_t const lcd_pads[] = {
 	/* Use GPIO for Brightness adjustment, duty cycle = period. */
 	MX6_PAD_GPIO1_IO08__GPIO1_IO08 | MUX_PAD_CTRL(NO_PAD_CTRL),
@@ -444,6 +445,13 @@ void board_preboot_os(void)
 {
 	gpio_set_value(IMX_GPIO_NR(1, 8), 0);
 	gpio_set_value(IMX_GPIO_NR(5, 9), 0);
+}
+
+void board_quiesce_devices(void)
+{
+#if defined(CONFIG_VIDEO_MXS)
+	enable_lcdif_clock(LCDIF1_BASE_ADDR, 0);
+#endif
 }
 
 #ifdef CONFIG_SPL_BUILD

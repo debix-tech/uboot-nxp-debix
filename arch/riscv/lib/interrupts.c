@@ -9,16 +9,25 @@
  * Copyright (C) 2019 Sean Anderson <seanga2@gmail.com>
  */
 
-#include <common.h>
+#include <linux/compat.h>
 #include <efi_loader.h>
 #include <hang.h>
+#include <interrupt.h>
 #include <irq_func.h>
 #include <asm/global_data.h>
 #include <asm/ptrace.h>
 #include <asm/system.h>
 #include <asm/encoding.h>
+#include <semihosting.h>
 
 DECLARE_GLOBAL_DATA_PTR;
+
+static struct resume_data *resume;
+
+void set_resume(struct resume_data *data)
+{
+	resume = data;
+}
 
 static void show_efi_loaded_images(uintptr_t epc)
 {
@@ -51,6 +60,38 @@ static void show_regs(struct pt_regs *regs)
 #endif
 }
 
+/**
+ * instr_len() - get instruction length
+ *
+ * @i:		low 16 bits of the instruction
+ * Return:	number of u16 in instruction
+ */
+static int instr_len(u16 i)
+{
+	if ((i & 0x03) != 0x03)
+		return 1;
+	/* Instructions with more than 32 bits are not yet specified */
+	return 2;
+}
+
+/**
+ * show_code() - display code leading to exception
+ *
+ * @epc:	program counter
+ */
+static void show_code(ulong epc)
+{
+	u16 *pos = (u16 *)(epc & ~1UL);
+	int i, len = instr_len(*pos);
+
+	printf("\nCode: ");
+	for (i = -8; i; ++i)
+		printf("%04x ", pos[i]);
+	printf("(");
+	for (i = 0; i < len; ++i)
+		printf("%04x%s", pos[i], i + 1 == len ? ")\n" : " ");
+}
+
 static void _exit_trap(ulong code, ulong epc, ulong tval, struct pt_regs *regs)
 {
 	static const char * const exception_code[] = {
@@ -72,6 +113,11 @@ static void _exit_trap(ulong code, ulong epc, ulong tval, struct pt_regs *regs)
 		"Store/AMO page fault",
 	};
 
+	if (resume) {
+		resume->code = code;
+		longjmp(resume->jump, 1);
+	}
+
 	if (code < ARRAY_SIZE(exception_code))
 		printf("Unhandled exception: %s\n", exception_code[code]);
 	else
@@ -85,6 +131,7 @@ static void _exit_trap(ulong code, ulong epc, ulong tval, struct pt_regs *regs)
 		       epc - gd->reloc_off, regs->ra - gd->reloc_off);
 
 	show_regs(regs);
+	show_code(epc);
 	show_efi_loaded_images(epc);
 	panic("\n");
 }
@@ -115,6 +162,29 @@ ulong handle_trap(ulong cause, ulong epc, ulong tval, struct pt_regs *regs)
 
 	/* An UEFI application may have changed gd. Restore U-Boot's gd. */
 	efi_restore_gd();
+
+	if (cause == CAUSE_BREAKPOINT &&
+	    CONFIG_IS_ENABLED(SEMIHOSTING_FALLBACK)) {
+		ulong pre_addr = epc - 4, post_addr = epc + 4;
+
+		/* Check for prior and post addresses to be in same page. */
+		if ((pre_addr & ~(PAGE_SIZE - 1)) ==
+			(post_addr & ~(PAGE_SIZE - 1))) {
+			u32 pre = *(u32 *)pre_addr;
+			u32 post = *(u32 *)post_addr;
+
+			/* Check for semihosting, i.e.:
+			 * slli    zero,zero,0x1f
+			 * ebreak
+			 * srai    zero,zero,0x7
+			 */
+			if (pre == 0x01f01013 && post == 0x40705013) {
+				disable_semihosting();
+				epc += 4;
+				return epc;
+			}
+		}
+	}
 
 	is_irq = (cause & MCAUSE_INT);
 	irq = (cause & ~MCAUSE_INT);

@@ -4,12 +4,13 @@
  * Copyright (C) Chris Brandt
  */
 
-#include <common.h>
 #include <cpu_func.h>
+#include <errno.h>
 #include <init.h>
 #include <asm/global_data.h>
 #include <asm/io.h>
 #include <asm/arch/sys_proto.h>
+#include <asm/u-boot.h>
 
 #define RZA1_WDT_BASE	0xfcfe0000
 #define WTCSR		0x00
@@ -20,7 +21,7 @@ DECLARE_GLOBAL_DATA_PTR;
 
 int board_init(void)
 {
-	gd->bd->bi_boot_params = (CONFIG_SYS_SDRAM_BASE + 0x100);
+	gd->bd->bi_boot_params = (CFG_SYS_SDRAM_BASE + 0x100);
 
 	return 0;
 }
@@ -40,7 +41,7 @@ int dram_init_banksize(void)
 	return 0;
 }
 
-void reset_cpu(ulong addr)
+void reset_cpu(void)
 {
 	/* Dummy read (must read WRCSR:WOVF at least once before clearing) */
 	readb(RZA1_WDT_BASE + WRCSR);

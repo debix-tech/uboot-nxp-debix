@@ -13,19 +13,45 @@
  * struct unit_test_state - Entire state of test system
  *
  * @fail_count: Number of tests that failed
+ * @skip_count: Number of tests that were skipped
  * @start: Store the starting mallinfo when doing leak test
- * @priv: A pointer to some other info some suites want to track
+ * @of_live: true to use livetree if available, false to use flattree
  * @of_root: Record of the livetree root node (used for setting up tests)
+ * @root: Root device
+ * @testdev: Test device
+ * @force_fail_alloc: Force all memory allocs to fail
+ * @skip_post_probe: Skip uclass post-probe processing
+ * @fdt_chksum: crc8 of the device tree contents
+ * @fdt_copy: Copy of the device tree
+ * @fdt_size: Size of the device-tree copy
+ * @other_fdt: Buffer for the other FDT (UT_TESTF_OTHER_FDT)
+ * @other_fdt_size: Size of the other FDT (UT_TESTF_OTHER_FDT)
+ * @of_other: Live tree for the other FDT
+ * @runs_per_test: Number of times to run each test (typically 1)
+ * @force_run: true to run tests marked with the UT_TESTF_MANUAL flag
  * @expect_str: Temporary string used to hold expected string value
  * @actual_str: Temporary string used to hold actual string value
  */
 struct unit_test_state {
 	int fail_count;
+	int skip_count;
 	struct mallinfo start;
-	void *priv;
 	struct device_node *of_root;
-	char expect_str[256];
-	char actual_str[256];
+	bool of_live;
+	struct udevice *root;
+	struct udevice *testdev;
+	int force_fail_alloc;
+	int skip_post_probe;
+	uint fdt_chksum;
+	void *fdt_copy;
+	uint fdt_size;
+	void *other_fdt;
+	int other_fdt_size;
+	struct device_node *of_other;
+	int runs_per_test;
+	bool force_run;
+	char expect_str[512];
+	char actual_str[512];
 };
 
 /* Test flags for each test */
@@ -36,6 +62,17 @@ enum {
 	UT_TESTF_FLAT_TREE	= BIT(3),	/* test needs flat DT */
 	UT_TESTF_LIVE_TREE	= BIT(4),	/* needs live device tree */
 	UT_TESTF_CONSOLE_REC	= BIT(5),	/* needs console recording */
+	/* do extra driver model init and uninit */
+	UT_TESTF_DM		= BIT(6),
+	UT_TESTF_OTHER_FDT	= BIT(7),	/* read in other device tree */
+	/*
+	 * Only run if explicitly requested with 'ut -f <suite> <test>'. The
+	 * test name must end in "_norun" so that pytest detects this also,
+	 * since it cannot access the flags.
+	 */
+	UT_TESTF_MANUAL		= BIT(8),
+	UT_TESTF_ETH_BOOTDEV	= BIT(9),	/* enable Ethernet bootdevs */
+	UT_TESTF_SF_BOOTDEV	= BIT(10),	/* enable SPI flash bootdevs */
 };
 
 /**
@@ -76,12 +113,23 @@ struct unit_test {
  * @_suite:	name of the test suite concatenated with "_test"
  */
 #define UNIT_TEST(_name, _flags, _suite)				\
-	ll_entry_declare(struct unit_test, _name, _suite) = {		\
+	ll_entry_declare(struct unit_test, _name, ut_ ## _suite) = {	\
 		.file = __FILE__,					\
 		.name = #_name,						\
 		.flags = _flags,					\
 		.func = _name,						\
 	}
+
+/* Get the start of a list of unit tests for a particular suite */
+#define UNIT_TEST_SUITE_START(_suite) \
+	ll_entry_start(struct unit_test, ut_ ## _suite)
+#define UNIT_TEST_SUITE_COUNT(_suite) \
+	ll_entry_count(struct unit_test, ut_ ## _suite)
+
+/* Use ! and ~ so that all tests will be sorted between these two values */
+#define UNIT_TEST_ALL_START()	ll_entry_start(struct unit_test, ut_!)
+#define UNIT_TEST_ALL_END()	ll_entry_start(struct unit_test, ut_~)
+#define UNIT_TEST_ALL_COUNT()	(UNIT_TEST_ALL_END() - UNIT_TEST_ALL_START())
 
 /* Sizes for devres tests */
 enum {
@@ -103,15 +151,94 @@ enum {
  */
 struct udevice *testbus_get_clear_removed(void);
 
+#ifdef CONFIG_SANDBOX
+#include <asm/state.h>
+#include <asm/test.h>
+#endif
+
+static inline void arch_reset_for_test(void)
+{
+#ifdef CONFIG_SANDBOX
+	state_reset_for_test(state_get_current());
+#endif
+}
+static inline int test_load_other_fdt(struct unit_test_state *uts)
+{
+	int ret = 0;
+#ifdef CONFIG_SANDBOX
+	ret = sandbox_load_other_fdt(&uts->other_fdt, &uts->other_fdt_size);
+#endif
+	return ret;
+}
+
 /**
- * dm_test_main() - Run driver model tests
+ * Control skipping of time delays
  *
- * Run all the available driver model tests, or a selection
+ * Some tests have unnecessay time delays (e.g. USB). Allow these to be
+ * skipped to speed up testing
  *
- * @test_name: Name of single test to run (e.g. "dm_test_fdt_pre_reloc" or just
- *	"fdt_pre_reloc"), or NULL to run all
- * @return 0 if all tests passed, 1 if not
+ * @param skip_delays	true to skip delays from now on, false to honour delay
+ *			requests
  */
-int dm_test_main(const char *test_name);
+static inline void test_set_skip_delays(bool skip_delays)
+{
+#ifdef CONFIG_SANDBOX
+	state_set_skip_delays(skip_delays);
+#endif
+}
+
+/**
+ * test_set_eth_enable() - Enable / disable Ethernet
+ *
+ * Allows control of whether Ethernet packets are actually send/received
+ *
+ * @enable: true to enable Ethernet, false to disable
+ */
+static inline void test_set_eth_enable(bool enable)
+{
+#ifdef CONFIG_SANDBOX
+	sandbox_set_eth_enable(enable);
+#endif
+}
+
+/* Allow ethernet to be disabled for testing purposes */
+static inline bool test_eth_enabled(void)
+{
+	bool enabled = true;
+
+#ifdef CONFIG_SANDBOX
+	enabled = sandbox_eth_enabled();
+#endif
+	return enabled;
+}
+
+/* Allow ethernet bootdev to be ignored for testing purposes */
+static inline bool test_eth_bootdev_enabled(void)
+{
+	bool enabled = true;
+
+#ifdef CONFIG_SANDBOX
+	enabled = sandbox_eth_enabled();
+#endif
+	return enabled;
+}
+
+/* Allow SPI flash bootdev to be ignored for testing purposes */
+static inline bool test_sf_bootdev_enabled(void)
+{
+	bool enabled = true;
+
+#ifdef CONFIG_SANDBOX
+	enabled = sandbox_sf_bootdev_enabled();
+#endif
+	return enabled;
+}
+
+static inline void test_sf_set_enable_bootdevs(bool enable)
+{
+#ifdef CONFIG_SANDBOX
+	sandbox_sf_set_enable_bootdevs(enable);
+#endif
+}
 
 #endif /* __TEST_TEST_H */

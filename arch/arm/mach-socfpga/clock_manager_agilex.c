@@ -37,8 +37,6 @@ static ulong cm_get_rate_dm(u32 id)
 
 	rate = clk_get_rate(&clk);
 
-	clk_free(&clk);
-
 	if ((rate == (unsigned long)-ENOSYS) ||
 	    (rate == (unsigned long)-ENXIO) ||
 	    (rate == (unsigned long)-EIO)) {
@@ -63,12 +61,6 @@ unsigned long cm_get_mpu_clk_hz(void)
 unsigned int cm_get_l4_sys_free_clk_hz(void)
 {
 	return cm_get_rate_dm(AGILEX_L4_SYS_FREE_CLK);
-}
-
-u32 cm_get_qspi_controller_clk_hz(void)
-{
-	return readl(socfpga_get_sysmgr_addr() +
-		     SYSMGR_SOC64_BOOT_SCRATCH_COLD0);
 }
 
 void cm_print_clock_quick_summary(void)

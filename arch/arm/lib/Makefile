@@ -33,18 +33,33 @@ obj-$(CONFIG_OF_LIBFDT) += bootm-fdt.o
 obj-$(CONFIG_CMD_BOOTI) += bootm.o image.o
 obj-$(CONFIG_CMD_BOOTM) += bootm.o
 obj-$(CONFIG_CMD_BOOTZ) += bootm.o zimage.o
-obj-$(CONFIG_SYS_L2_PL310) += cache-pl310.o
 else
 obj-$(CONFIG_$(SPL_TPL_)FRAMEWORK) += spl.o
-obj-$(CONFIG_SPL_FRAMEWORK) += zimage.o
+ifdef CONFIG_SPL_FRAMEWORK
+obj-$(CONFIG_CMD_BOOTI) += image.o
+obj-$(CONFIG_CMD_BOOTZ) += zimage.o
+endif
 obj-$(CONFIG_OF_LIBFDT) += bootm-fdt.o
 endif
+ifdef CONFIG_ARM64
+obj-$(CONFIG_$(SPL_TPL_)USE_ARCH_MEMSET) += memset-arm64.o
+obj-$(CONFIG_$(SPL_TPL_)USE_ARCH_MEMCPY) += memcpy-arm64.o
+else
 obj-$(CONFIG_$(SPL_TPL_)USE_ARCH_MEMSET) += memset.o
 obj-$(CONFIG_$(SPL_TPL_)USE_ARCH_MEMCPY) += memcpy.o
-obj-$(CONFIG_SEMIHOSTING) += semihosting.o
+endif
+obj-$(CONFIG_$(SPL_TPL_)SYS_L2_PL310) += cache-pl310.o
+obj-$(CONFIG_$(SPL_TPL_)SEMIHOSTING) += semihosting.o
 
+ifneq ($(filter y,$(CONFIG_SAVE_PREV_BL_INITRAMFS_START_ADDR) $(CONFIG_SAVE_PREV_BL_FDT_ADDR)),)
+obj-y += save_prev_bl_data.o
+endif
+
+# obj-$(CONFIG_SAVE_PREV_BL_INITRAMFS_START_ADDR) += save_prev_bl_data.o
 obj-y	+= bdinfo.o
 obj-y	+= sections.o
+CFLAGS_REMOVE_sections.o := $(LTO_CFLAGS)
+
 obj-y	+= stack.o
 ifdef CONFIG_CPU_V7M
 obj-y	+= interrupts_m.o
@@ -64,6 +79,7 @@ endif
 
 obj-y	+= cache.o
 obj-$(CONFIG_SYS_ARM_CACHE_CP15)	+= cache-cp15.o
+CFLAGS_REMOVE_cache-cp15.o := $(LTO_CFLAGS)
 
 obj-y	+= psci-dt.o
 
@@ -97,6 +113,11 @@ AFLAGS_REMOVE_memset.o := -mthumb -mthumb-interwork
 AFLAGS_REMOVE_memcpy.o := -mthumb -mthumb-interwork
 AFLAGS_memset.o := -DMEMSET_NO_THUMB_BUILD
 AFLAGS_memcpy.o := -DMEMCPY_NO_THUMB_BUILD
+
+# This is only necessary to force ARM mode on THUMB1 targets.
+ifneq ($(CONFIG_SYS_ARM_ARCH),4)
+obj-y   += bitops.o
+endif
 endif
 endif
 

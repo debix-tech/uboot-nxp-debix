@@ -6,7 +6,7 @@
  *    * mezzanine card M8 (100G) #1 is connected to IO SLOT 1 - DPMAC 1
  *    * mezzanine card M8 (100G) #2 is connected to IO SLOT 2 - DPMAC 2
  *
- * Copyright 2021 NXP
+ * Copyright 2021-2022 NXP
  *
  */
 

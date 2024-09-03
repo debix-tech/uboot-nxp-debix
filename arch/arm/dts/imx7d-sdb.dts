@@ -1,7 +1,6 @@
-// SPDX-License-Identifier: GPL-2.0+
-/*
- * Copyright 2017 NXP
- */
+// SPDX-License-Identifier: GPL-2.0+ OR MIT
+//
+// Copyright (C) 2015 Freescale Semiconductor, Inc.
 
 /dts-v1/;
 
@@ -37,14 +36,14 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_gpio_keys>;
 
-		volume-up {
+		key-volume-up {
 			label = "Volume Up";
 			gpios = <&gpio5 11 GPIO_ACTIVE_LOW>;
 			linux,code = <KEY_VOLUMEUP>;
 			wakeup-source;
 		};
 
-		volume-down {
+		key-volume-down {
 			label = "Volume Down";
 			gpios = <&gpio5 10 GPIO_ACTIVE_LOW>;
 			linux,code = <KEY_VOLUMEDOWN>;
@@ -56,9 +55,9 @@
 		compatible = "spi-gpio";
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_spi4>;
-		gpio-sck = <&gpio1 13 GPIO_ACTIVE_HIGH>;
-		gpio-mosi = <&gpio1 9 GPIO_ACTIVE_HIGH>;
-		cs-gpios = <&gpio1 12 GPIO_ACTIVE_HIGH>;
+		sck-gpios = <&gpio1 13 GPIO_ACTIVE_HIGH>;
+		mosi-gpios = <&gpio1 9 GPIO_ACTIVE_HIGH>;
+		cs-gpios = <&gpio1 12 GPIO_ACTIVE_LOW>;
 		num-chipselects = <1>;
 		#address-cells = <1>;
 		#size-cells = <0>;
@@ -72,6 +71,17 @@
 			registers-default = /bits/ 8 <0x74>; /* Enable PERI_3V3, SENSOR_RST_B and HDMI_RST*/
 			spi-max-frequency = <100000>;
 		};
+	};
+
+	reg_sd1_vmmc: regulator-sd1-vmmc {
+		compatible = "regulator-fixed";
+		regulator-name = "VDD_SD1";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		gpio = <&gpio5 2 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		startup-delay-us = <200000>;
+		off-on-delay-us = <20000>;
 	};
 
 	reg_usb_otg1_vbus: regulator-usb-otg1-vbus {
@@ -154,14 +164,12 @@
 	};
 
 	sound {
-		compatible = "fsl,imx7d-evk-wm8960", "fsl,imx-audio-wm8960";
+		compatible = "fsl,imx7d-evk-wm8960",
+			     "fsl,imx-audio-wm8960";
 		model = "wm8960-audio";
-		cpu-dai = <&sai1>;
+		audio-cpu = <&sai1>;
 		audio-codec = <&codec>;
-		codec-master;
-		/* JD2: hp detect high for headphone*/
-		hp-det = <2 0>;
-		hp-det-gpios = <&gpio2 28 0>;
+		hp-det-gpio = <&gpio2 28 GPIO_ACTIVE_HIGH>;
 		audio-routing =
 			"Headphone Jack", "HP_L",
 			"Headphone Jack", "HP_R",
@@ -169,20 +177,15 @@
 			"Ext Spk", "SPK_LN",
 			"Ext Spk", "SPK_RP",
 			"Ext Spk", "SPK_RN",
-			"LINPUT1", "Main MIC",
-			"Main MIC", "MICB";
-		assigned-clocks = <&clks IMX7D_AUDIO_MCLK_ROOT_SRC>,
-				<&clks IMX7D_AUDIO_MCLK_ROOT_CLK>;
-		assigned-clock-parents = <&clks IMX7D_PLL_AUDIO_POST_DIV>;
-		assigned-clock-rates = <0>, <12288000>;
+			"LINPUT1", "AMIC",
+			"AMIC", "MICB";
 	};
 
 	sound-hdmi {
-		compatible = "fsl,imx7d-sdb-sii902x",
-			   "fsl,imx-audio-sii902x";
+		compatible = "fsl,imx-audio-sii902x";
 		model = "sii902x-audio";
-		cpu-dai = <&sai3>;
-		hdmi-controller = <&sii902x>;
+		audio-cpu = <&sai3>;
+		hdmi-out;
 	};
 
 	usdhc2_pwrseq: usdhc2_pwrseq {
@@ -207,9 +210,8 @@
 	cpu-supply = <&sw1a_reg>;
 };
 
-&clks {
-	assigned-clocks = <&clks IMX7D_PLL_AUDIO_POST_DIV>;
-	assigned-clock-rates = <884736000>;
+&cpu1 {
+	cpu-supply = <&sw1a_reg>;
 };
 
 &csi1 {
@@ -227,24 +229,19 @@
 &ecspi3 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi3>;
-	cs-gpios = <&gpio5 9 GPIO_ACTIVE_HIGH>;
+	cs-gpios = <&gpio5 9 GPIO_ACTIVE_LOW>;
 	status = "okay";
 
 	tsc2046@0 {
 		compatible = "ti,tsc2046";
 		reg = <0>;
 		spi-max-frequency = <1000000>;
-		pinctrl-names ="default";
+		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_tsc2046_pendown>;
 		interrupt-parent = <&gpio2>;
 		interrupts = <29 0>;
-		pendown-gpio = <&gpio2 29 GPIO_ACTIVE_HIGH>;
-		ti,x-min = /bits/ 16 <0>;
-		ti,x-max = /bits/ 16 <0>;
-		ti,y-min = /bits/ 16 <0>;
-		ti,y-max = /bits/ 16 <0>;
-		ti,pressure-max = /bits/ 16 <0>;
-		ti,x-plate-ohms = /bits/ 16 <400>;
+		pendown-gpio = <&gpio2 29 GPIO_ACTIVE_LOW>;
+		touchscreen-max-pressure = <255>;
 		wakeup-source;
 	};
 };
@@ -344,6 +341,7 @@
 	pinctrl-0 = <&pinctrl_gpmi_nand_1>;
 	status = "disabled";
 	nand-on-flash-bbt;
+	fsl,use-minimum-ecc;
 };
 
 &i2c1 {
@@ -351,7 +349,7 @@
 	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
 
-	pmic: pfuze3000@8 {
+	pmic: pmic@8 {
 		compatible = "fsl,pfuze3000";
 		reg = <0x08>;
 
@@ -452,12 +450,12 @@
 	status = "okay";
 
 	fxas2100x@20 {
-		compatible = "fsl,fxas2100x";
+		compatible = "nxp,fxas21002c";
 		reg = <0x20>;
 	};
 
 	fxos8700@1e {
-		compatible = "fsl,fxos8700";
+		compatible = "nxp,fxos8700";
 		reg = <0x1e>;
 	};
 
@@ -571,9 +569,16 @@
 	codec: wm8960@1a {
 		compatible = "wlf,wm8960";
 		reg = <0x1a>;
-		clocks = <&clks IMX7D_AUDIO_MCLK_ROOT_CLK>;
+		clocks = <&clks IMX7D_AUDIO_MCLK_ROOT_DIV>;
 		clock-names = "mclk";
 		wlf,shared-lrclk;
+		wlf,hp-cfg = <2 2 3>;
+		wlf,gpio-cfg = <1 3>;
+		assigned-clocks = <&clks IMX7D_AUDIO_MCLK_ROOT_SRC>,
+				  <&clks IMX7D_PLL_AUDIO_POST_DIV>,
+				  <&clks IMX7D_AUDIO_MCLK_ROOT_DIV>;
+		assigned-clock-parents = <&clks IMX7D_PLL_AUDIO_POST_DIV>;
+		assigned-clock-rates = <0>, <884736000>, <12288000>;
 	};
 
 	ov5640_mipi: ov5640_mipi@3c {
@@ -644,9 +649,10 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai1>;
 	assigned-clocks = <&clks IMX7D_SAI1_ROOT_SRC>,
+			  <&clks IMX7D_PLL_AUDIO_POST_DIV>,
 			  <&clks IMX7D_SAI1_ROOT_CLK>;
 	assigned-clock-parents = <&clks IMX7D_PLL_AUDIO_POST_DIV>;
-	assigned-clock-rates = <0>, <36864000>;
+	assigned-clock-rates = <0>, <884736000>, <36864000>;
 	status = "okay";
 };
 
@@ -654,9 +660,10 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai3 &pinctrl_sai3_mclk>;
 	assigned-clocks = <&clks IMX7D_SAI3_ROOT_SRC>,
+			  <&clks IMX7D_PLL_AUDIO_POST_DIV>,
 			  <&clks IMX7D_SAI3_ROOT_CLK>;
 	assigned-clock-parents = <&clks IMX7D_PLL_AUDIO_POST_DIV>;
-	assigned-clock-rates = <0>, <36864000>;
+	assigned-clock-rates = <0>, <884736000>, <36864000>;
 	status = "okay";
 };
 
@@ -724,6 +731,8 @@
 	cd-gpios = <&gpio5 0 GPIO_ACTIVE_LOW>;
 	wp-gpios = <&gpio5 1 GPIO_ACTIVE_HIGH>;
 	vmmc-supply = <&reg_sd1_vmmc>;
+	wakeup-source;
+	keep-power-in-suspend;
 	status = "okay";
 };
 
@@ -911,6 +920,7 @@
 		pinctrl_hog: hoggrp {
 			fsl,pins = <
 				MX7D_PAD_ECSPI2_SS0__GPIO4_IO23		0x34  /* bt reg on */
+				MX7D_PAD_EPDC_BDR0__GPIO2_IO28		0x59  /* headphone detect */
 			>;
 		};
 
@@ -1004,16 +1014,6 @@
 			>;
 		};
 
-		pinctrl_max17135: max17135grp-1 {
-			fsl,pins = <
-				MX7D_PAD_EPDC_PWR_STAT__GPIO2_IO31	0x80000000  /* pwrgood */
-				MX7D_PAD_I2C4_SCL__GPIO4_IO14		0x80000000  /* vcom_ctrl */
-				MX7D_PAD_EPDC_SDCE3__GPIO2_IO23		0x80000000  /* wakeup */
-				MX7D_PAD_EPDC_PWR_COM__GPIO2_IO30	0x80000000  /* v3p3 */
-				MX7D_PAD_EPDC_SDCE2__GPIO2_IO22		0x80000000  /* pwr int */
-			>;
-		};
-
 		pinctrl_sai1: sai1grp {
 			fsl,pins = <
 				MX7D_PAD_SAI1_MCLK__SAI1_MCLK           0x1f
@@ -1041,6 +1041,15 @@
 			>;
 		};
 
+		pinctrl_max17135: max17135grp-1 {
+			fsl,pins = <
+				MX7D_PAD_EPDC_PWR_STAT__GPIO2_IO31	0x80000000  /* pwrgood */
+				MX7D_PAD_I2C4_SCL__GPIO4_IO14		0x80000000  /* vcom_ctrl */
+				MX7D_PAD_EPDC_SDCE3__GPIO2_IO23		0x80000000  /* wakeup */
+				MX7D_PAD_EPDC_PWR_COM__GPIO2_IO30	0x80000000  /* v3p3 */
+				MX7D_PAD_EPDC_SDCE2__GPIO2_IO22		0x80000000  /* pwr int */
+			>;
+		};
 		pinctrl_spi4: spi4grp {
 			fsl,pins = <
 				MX7D_PAD_GPIO1_IO09__GPIO1_IO9	0x59
@@ -1278,5 +1287,4 @@
 			MX7D_PAD_LPSR_GPIO1_IO03__SAI3_MCLK	0x1f
 		>;
 	};
-
 };

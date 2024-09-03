@@ -88,7 +88,7 @@ The command function pointer has to be of type
 
 .. code-block:: c
 
-    int (*cmd)(struct cmd_tbl *cmdtp, int flag, int argc, const char *argv[]);
+    int (*cmd)(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[]);
 
 cmdtp
     Table entry describing the command (see above).
@@ -169,8 +169,8 @@ by writing in u-boot.lds ($(srctree)/board/boardname/u-boot.lds) these
 
 .. code-block:: c
 
-    .u_boot_list : {
-        KEEP(*(SORT(.u_boot_list*)));
+    __u_boot_list : {
+        KEEP(*(SORT(__u_boot_list*)));
     }
 
 Writing tests

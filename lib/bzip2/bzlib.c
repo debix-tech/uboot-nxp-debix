@@ -1,7 +1,6 @@
-#include <config.h>
-#include <common.h>
 #include <malloc.h>
 #include <watchdog.h>
+#include <stdio.h>
 
 /*
  * This file is a modified version of bzlib.c from the bzip2-1.0.2
@@ -844,7 +843,7 @@ int BZ_API(BZ2_bzDecompress) ( bz_stream *strm )
 
    while (True) {
 #if defined(CONFIG_HW_WATCHDOG) || defined(CONFIG_WATCHDOG)
-	WATCHDOG_RESET();
+	schedule();
 #endif
       if (s->state == BZ_X_IDLE) return BZ_SEQUENCE_ERROR;
       if (s->state == BZ_X_OUTPUT) {

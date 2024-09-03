@@ -1,13 +1,24 @@
-#include <common.h>
-#include <log.h>
-#include <asm/global_data.h>
+// SPDX-License-Identifier: GPL-2.0+
+/*
+ * This code is based on a version (aka dlmalloc) of malloc/free/realloc written
+ * by Doug Lea and released to the public domain, as explained at
+ * http://creativecommons.org/publicdomain/zero/1.0/-
+ *
+ * The original code is available at http://gee.cs.oswego.edu/pub/misc/
+ * as file malloc-2.6.6.c.
+ */
 
 #if CONFIG_IS_ENABLED(UNIT_TEST)
 #define DEBUG
 #endif
 
+#include <common.h>
+#include <log.h>
+#include <asm/global_data.h>
+
 #include <malloc.h>
 #include <asm/io.h>
+#include <valgrind/memcheck.h>
 
 #ifdef DEBUG
 #if __STD_C
@@ -69,7 +80,7 @@ GmListElement* makeGmListElement (void* bas)
 	return this;
 }
 
-void gcleanup ()
+void gcleanup (void)
 {
 	BOOL rval;
 	assert ( (head == NULL) || (head->base == (void*)gAddressBase));
@@ -564,19 +575,6 @@ static mbinptr av_[NAV * 2 + 2] = {
  IAV(120), IAV(121), IAV(122), IAV(123), IAV(124), IAV(125), IAV(126), IAV(127)
 };
 
-#ifdef CONFIG_NEEDS_MANUAL_RELOC
-static void malloc_bin_reloc(void)
-{
-	mbinptr *p = &av_[2];
-	size_t i;
-
-	for (i = 2; i < ARRAY_SIZE(av_); ++i, ++p)
-		*p = (mbinptr)((ulong)*p + gd->reloc_off);
-}
-#else
-static inline void malloc_bin_reloc(void) {}
-#endif
-
 #ifdef CONFIG_SYS_MALLOC_DEFAULT_TO_INIT
 static void malloc_init(void);
 #endif
@@ -584,6 +582,9 @@ static void malloc_init(void);
 ulong mem_malloc_start = 0;
 ulong mem_malloc_end = 0;
 ulong mem_malloc_brk = 0;
+
+static bool malloc_testing;	/* enable test mode */
+static int malloc_max_allocs;	/* return NULL after this many calls to malloc() */
 
 void *sbrk(ptrdiff_t increment)
 {
@@ -617,10 +618,9 @@ void mem_malloc_init(ulong start, ulong size)
 
 	debug("using memory %#lx-%#lx for malloc()\n", mem_malloc_start,
 	      mem_malloc_end);
-#ifdef CONFIG_SYS_MALLOC_CLEAR_ON_INIT
+#if CONFIG_IS_ENABLED(SYS_MALLOC_CLEAR_ON_INIT)
 	memset((void *)mem_malloc_start, 0x0, size);
 #endif
-	malloc_bin_reloc();
 }
 
 /* field-extraction macros */
@@ -1291,10 +1291,15 @@ Void_t* mALLOc(bytes) size_t bytes;
 
   INTERNAL_SIZE_T nb;
 
-#if CONFIG_VAL(SYS_MALLOC_F_LEN)
+#if CONFIG_IS_ENABLED(SYS_MALLOC_F)
 	if (!(gd->flags & GD_FLG_FULL_MALLOC_INIT))
 		return malloc_simple(bytes);
 #endif
+
+  if (CONFIG_IS_ENABLED(UNIT_TEST) && malloc_testing) {
+    if (--malloc_max_allocs < 0)
+      return NULL;
+  }
 
   /* check if mem_malloc_init() was run */
   if ((mem_malloc_start == 0) && (mem_malloc_end == 0)) {
@@ -1329,6 +1334,7 @@ Void_t* mALLOc(bytes) size_t bytes;
       unlink(victim, bck, fwd);
       set_inuse_bit_at_offset(victim, victim_size);
       check_malloced_chunk(victim, nb);
+      VALGRIND_MALLOCLIKE_BLOCK(chunk2mem(victim), bytes, SIZE_SZ, false);
       return chunk2mem(victim);
     }
 
@@ -1356,6 +1362,7 @@ Void_t* mALLOc(bytes) size_t bytes;
 	unlink(victim, bck, fwd);
 	set_inuse_bit_at_offset(victim, victim_size);
 	check_malloced_chunk(victim, nb);
+        VALGRIND_MALLOCLIKE_BLOCK(chunk2mem(victim), bytes, SIZE_SZ, false);
 	return chunk2mem(victim);
       }
     }
@@ -1379,6 +1386,7 @@ Void_t* mALLOc(bytes) size_t bytes;
       set_head(remainder, remainder_size | PREV_INUSE);
       set_foot(remainder, remainder_size);
       check_malloced_chunk(victim, nb);
+      VALGRIND_MALLOCLIKE_BLOCK(chunk2mem(victim), bytes, SIZE_SZ, false);
       return chunk2mem(victim);
     }
 
@@ -1388,6 +1396,7 @@ Void_t* mALLOc(bytes) size_t bytes;
     {
       set_inuse_bit_at_offset(victim, victim_size);
       check_malloced_chunk(victim, nb);
+      VALGRIND_MALLOCLIKE_BLOCK(chunk2mem(victim), bytes, SIZE_SZ, false);
       return chunk2mem(victim);
     }
 
@@ -1443,6 +1452,7 @@ Void_t* mALLOc(bytes) size_t bytes;
 	    set_head(remainder, remainder_size | PREV_INUSE);
 	    set_foot(remainder, remainder_size);
 	    check_malloced_chunk(victim, nb);
+	    VALGRIND_MALLOCLIKE_BLOCK(chunk2mem(victim), bytes, SIZE_SZ, false);
 	    return chunk2mem(victim);
 	  }
 
@@ -1451,6 +1461,7 @@ Void_t* mALLOc(bytes) size_t bytes;
 	    set_inuse_bit_at_offset(victim, victim_size);
 	    unlink(victim, bck, fwd);
 	    check_malloced_chunk(victim, nb);
+	    VALGRIND_MALLOCLIKE_BLOCK(chunk2mem(victim), bytes, SIZE_SZ, false);
 	    return chunk2mem(victim);
 	  }
 
@@ -1499,6 +1510,7 @@ Void_t* mALLOc(bytes) size_t bytes;
     /* If big and would otherwise need to extend, try to use mmap instead */
     if ((unsigned long)nb >= (unsigned long)mmap_threshold &&
 	(victim = mmap_chunk(nb)))
+      VALGRIND_MALLOCLIKE_BLOCK(chunk2mem(victim), bytes, SIZE_SZ, false);
       return chunk2mem(victim);
 #endif
 
@@ -1513,6 +1525,7 @@ Void_t* mALLOc(bytes) size_t bytes;
   top = chunk_at_offset(victim, nb);
   set_head(top, remainder_size | PREV_INUSE);
   check_malloced_chunk(victim, nb);
+  VALGRIND_MALLOCLIKE_BLOCK(chunk2mem(victim), bytes, SIZE_SZ, false);
   return chunk2mem(victim);
 
 }
@@ -1559,10 +1572,12 @@ void fREe(mem) Void_t* mem;
   mchunkptr fwd;       /* misc temp for linking */
   int       islr;      /* track whether merging with last_remainder */
 
-#if CONFIG_VAL(SYS_MALLOC_F_LEN)
+#if CONFIG_IS_ENABLED(SYS_MALLOC_F)
 	/* free() is a no-op - all the memory will be freed on relocation */
-	if (!(gd->flags & GD_FLG_FULL_MALLOC_INIT))
+	if (!(gd->flags & GD_FLG_FULL_MALLOC_INIT)) {
+		VALGRIND_FREELIKE_BLOCK(mem, SIZE_SZ);
 		return;
+	}
 #endif
 
   if (mem == NULL)                              /* free(0) has no effect */
@@ -1584,6 +1599,7 @@ void fREe(mem) Void_t* mem;
   sz = hd & ~PREV_INUSE;
   next = chunk_at_offset(p, sz);
   nextsz = chunksize(next);
+  VALGRIND_FREELIKE_BLOCK(mem, SIZE_SZ);
 
   if (next == top)                            /* merge with top */
   {
@@ -1719,7 +1735,7 @@ Void_t* rEALLOc(oldmem, bytes) Void_t* oldmem; size_t bytes;
   /* realloc of null is supposed to be same as malloc */
   if (oldmem == NULL) return mALLOc(bytes);
 
-#if CONFIG_VAL(SYS_MALLOC_F_LEN)
+#if CONFIG_IS_ENABLED(SYS_MALLOC_F)
 	if (!(gd->flags & GD_FLG_FULL_MALLOC_INIT)) {
 		/* This is harder to support and should not be needed */
 		panic("pre-reloc realloc() is not supported");
@@ -1772,6 +1788,8 @@ Void_t* rEALLOc(oldmem, bytes) Void_t* oldmem; size_t bytes;
 	  top = chunk_at_offset(oldp, nb);
 	  set_head(top, (newsize - nb) | PREV_INUSE);
 	  set_head_size(oldp, nb);
+	  VALGRIND_RESIZEINPLACE_BLOCK(chunk2mem(oldp), 0, bytes, SIZE_SZ);
+	  VALGRIND_MAKE_MEM_DEFINED(chunk2mem(oldp), bytes);
 	  return chunk2mem(oldp);
 	}
       }
@@ -1781,6 +1799,8 @@ Void_t* rEALLOc(oldmem, bytes) Void_t* oldmem; size_t bytes;
       {
 	unlink(next, bck, fwd);
 	newsize  += nextsize;
+	VALGRIND_RESIZEINPLACE_BLOCK(chunk2mem(oldp), 0, bytes, SIZE_SZ);
+	VALGRIND_MAKE_MEM_DEFINED(chunk2mem(oldp), bytes);
 	goto split;
       }
     }
@@ -1810,10 +1830,12 @@ Void_t* rEALLOc(oldmem, bytes) Void_t* oldmem; size_t bytes;
 	    newp = prev;
 	    newsize += prevsize + nextsize;
 	    newmem = chunk2mem(newp);
+	    VALGRIND_MALLOCLIKE_BLOCK(newmem, bytes, SIZE_SZ, false);
 	    MALLOC_COPY(newmem, oldmem, oldsize - SIZE_SZ);
 	    top = chunk_at_offset(newp, nb);
 	    set_head(top, (newsize - nb) | PREV_INUSE);
 	    set_head_size(newp, nb);
+	    VALGRIND_FREELIKE_BLOCK(oldmem, SIZE_SZ);
 	    return newmem;
 	  }
 	}
@@ -1826,6 +1848,7 @@ Void_t* rEALLOc(oldmem, bytes) Void_t* oldmem; size_t bytes;
 	  newp = prev;
 	  newsize += nextsize + prevsize;
 	  newmem = chunk2mem(newp);
+	  VALGRIND_MALLOCLIKE_BLOCK(newmem, bytes, SIZE_SZ, false);
 	  MALLOC_COPY(newmem, oldmem, oldsize - SIZE_SZ);
 	  goto split;
 	}
@@ -1838,6 +1861,7 @@ Void_t* rEALLOc(oldmem, bytes) Void_t* oldmem; size_t bytes;
 	newp = prev;
 	newsize += prevsize;
 	newmem = chunk2mem(newp);
+	VALGRIND_MALLOCLIKE_BLOCK(newmem, bytes, SIZE_SZ, false);
 	MALLOC_COPY(newmem, oldmem, oldsize - SIZE_SZ);
 	goto split;
       }
@@ -1864,6 +1888,9 @@ Void_t* rEALLOc(oldmem, bytes) Void_t* oldmem; size_t bytes;
     MALLOC_COPY(newmem, oldmem, oldsize - SIZE_SZ);
     fREe(oldmem);
     return newmem;
+  } else {
+    VALGRIND_RESIZEINPLACE_BLOCK(oldmem, 0, bytes, SIZE_SZ);
+    VALGRIND_MAKE_MEM_DEFINED(oldmem, bytes);
   }
 
 
@@ -1876,6 +1903,8 @@ Void_t* rEALLOc(oldmem, bytes) Void_t* oldmem; size_t bytes;
     set_head_size(newp, nb);
     set_head(remainder, remainder_size | PREV_INUSE);
     set_inuse_bit_at_offset(remainder, remainder_size);
+    VALGRIND_MALLOCLIKE_BLOCK(chunk2mem(remainder), remainder_size, SIZE_SZ,
+			      false);
     fREe(chunk2mem(remainder)); /* let free() deal with it */
   }
   else
@@ -1928,7 +1957,7 @@ Void_t* mEMALIGn(alignment, bytes) size_t alignment; size_t bytes;
 
   if ((long)bytes < 0) return NULL;
 
-#if CONFIG_VAL(SYS_MALLOC_F_LEN)
+#if CONFIG_IS_ENABLED(SYS_MALLOC_F)
 	if (!(gd->flags & GD_FLG_FULL_MALLOC_INIT)) {
 		return memalign_simple(alignment, bytes);
 	}
@@ -2033,6 +2062,7 @@ Void_t* mEMALIGn(alignment, bytes) size_t alignment; size_t bytes;
     set_head_size(p, leadsize);
     fREe(chunk2mem(p));
     p = newp;
+    VALGRIND_MALLOCLIKE_BLOCK(chunk2mem(p), bytes, SIZE_SZ, false);
 
     assert (newsize >= nb && (((unsigned long)(chunk2mem(p))) % alignment) == 0);
   }
@@ -2046,6 +2076,8 @@ Void_t* mEMALIGn(alignment, bytes) size_t alignment; size_t bytes;
     remainder = chunk_at_offset(p, nb);
     set_head(remainder, remainder_size | PREV_INUSE);
     set_head_size(p, nb);
+    VALGRIND_MALLOCLIKE_BLOCK(chunk2mem(remainder), remainder_size, SIZE_SZ,
+			      false);
     fREe(chunk2mem(remainder));
   }
 
@@ -2107,7 +2139,7 @@ Void_t* cALLOc(n, elem_size) size_t n; size_t elem_size;
 
 
   /* check if expand_top called, in which case don't need to clear */
-#ifdef CONFIG_SYS_MALLOC_CLEAR_ON_INIT
+#if CONFIG_IS_ENABLED(SYS_MALLOC_CLEAR_ON_INIT)
 #if MORECORE_CLEARS
   mchunkptr oldtop = top;
   INTERNAL_SIZE_T oldtopsize = chunksize(top);
@@ -2121,7 +2153,7 @@ Void_t* cALLOc(n, elem_size) size_t n; size_t elem_size;
     return NULL;
   else
   {
-#if CONFIG_VAL(SYS_MALLOC_F_LEN)
+#if CONFIG_IS_ENABLED(SYS_MALLOC_F)
 	if (!(gd->flags & GD_FLG_FULL_MALLOC_INIT)) {
 		memset(mem, 0, sz);
 		return mem;
@@ -2138,7 +2170,7 @@ Void_t* cALLOc(n, elem_size) size_t n; size_t elem_size;
 
     csz = chunksize(p);
 
-#ifdef CONFIG_SYS_MALLOC_CLEAR_ON_INIT
+#if CONFIG_IS_ENABLED(SYS_MALLOC_CLEAR_ON_INIT)
 #if MORECORE_CLEARS
     if (p == oldtop && csz > oldtopsize)
     {
@@ -2149,6 +2181,7 @@ Void_t* cALLOc(n, elem_size) size_t n; size_t elem_size;
 #endif
 
     MALLOC_ZERO(mem, csz - SIZE_SZ);
+    VALGRIND_MAKE_MEM_DEFINED(mem, sz);
     return mem;
   }
 }
@@ -2293,7 +2326,7 @@ size_t malloc_usable_size(mem) Void_t* mem;
 /* Utility to update current_mallinfo for malloc_stats and mallinfo() */
 
 #ifdef DEBUG
-static void malloc_update_mallinfo()
+static void malloc_update_mallinfo(void)
 {
   int i;
   mbinptr b;
@@ -2350,7 +2383,7 @@ static void malloc_update_mallinfo()
 */
 
 #ifdef DEBUG
-void malloc_stats()
+void malloc_stats(void)
 {
   malloc_update_mallinfo();
   printf("max system bytes = %10u\n",
@@ -2371,7 +2404,7 @@ void malloc_stats()
 */
 
 #ifdef DEBUG
-struct mallinfo mALLINFo()
+struct mallinfo mALLINFo(void)
 {
   malloc_update_mallinfo();
   return current_mallinfo;
@@ -2422,13 +2455,24 @@ int mALLOPt(param_number, value) int param_number; int value;
 
 int initf_malloc(void)
 {
-#if CONFIG_VAL(SYS_MALLOC_F_LEN)
+#if CONFIG_IS_ENABLED(SYS_MALLOC_F)
 	assert(gd->malloc_base);	/* Set up by crt0.S */
 	gd->malloc_limit = CONFIG_VAL(SYS_MALLOC_F_LEN);
 	gd->malloc_ptr = 0;
 #endif
 
 	return 0;
+}
+
+void malloc_enable_testing(int max_allocs)
+{
+	malloc_testing = true;
+	malloc_max_allocs = max_allocs;
+}
+
+void malloc_disable_testing(void)
+{
+	malloc_testing = false;
 }
 
 /*

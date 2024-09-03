@@ -51,7 +51,7 @@ struct mm_region *mem_map = otx2_mem_map;
 void mem_map_fill(void)
 {
 	int banks = OTX2_MEM_MAP_USED;
-	u32 dram_start = CONFIG_SYS_TEXT_BASE;
+	u32 dram_start = CONFIG_TEXT_BASE;
 
 	for (int i = 0; i < CONFIG_NR_DRAM_BANKS; i++) {
 		otx2_mem_map[banks].virt = dram_start;
@@ -68,6 +68,6 @@ u64 get_page_table_size(void)
 	return 0x80000;
 }
 
-void reset_cpu(ulong addr)
+void reset_cpu(void)
 {
 }

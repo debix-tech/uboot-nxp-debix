@@ -17,7 +17,7 @@
 #if IS_ENABLED(CONFIG_TEGRA_CLKRST)
 #include <asm/arch/clock.h>
 #endif
-#if IS_ENABLED(CONFIG_TEGRA_PINCTRL)
+#if CONFIG_IS_ENABLED(PINCTRL_TEGRA)
 #include <asm/arch/funcmux.h>
 #endif
 #if IS_ENABLED(CONFIG_TEGRA_MC)
@@ -45,7 +45,7 @@ enum {
 	UART_COUNT = 5,
 };
 
-static bool from_spl __attribute__ ((section(".data")));
+static bool from_spl __section(".data");
 
 #ifndef CONFIG_SPL_BUILD
 void save_boot_params(unsigned long r0, unsigned long r1, unsigned long r2,
@@ -77,9 +77,6 @@ bool spl_was_boot_source(void)
 }
 
 #if defined(CONFIG_TEGRA_SUPPORT_NON_SECURE)
-#if !defined(CONFIG_TEGRA124)
-#error tegra_cpu_is_non_secure has only been validated on Tegra124
-#endif
 bool tegra_cpu_is_non_secure(void)
 {
 	/*
@@ -163,7 +160,7 @@ int dram_init(void)
 	return 0;
 }
 
-#if IS_ENABLED(CONFIG_TEGRA_PINCTRL)
+#if CONFIG_IS_ENABLED(PINCTRL_TEGRA)
 static int uart_configs[] = {
 #if defined(CONFIG_TEGRA20)
  #if defined(CONFIG_TEGRA_UARTA_UAA_UAB)
@@ -235,7 +232,7 @@ static void setup_uarts(int uart_ids)
 
 void board_init_uart_f(void)
 {
-#if IS_ENABLED(CONFIG_TEGRA_PINCTRL)
+#if CONFIG_IS_ENABLED(PINCTRL_TEGRA)
 	int uart_ids = 0;	/* bit mask of which UART ids to enable */
 
 #ifdef CONFIG_TEGRA_ENABLE_UARTA
@@ -259,9 +256,9 @@ void board_init_uart_f(void)
 
 #if !CONFIG_IS_ENABLED(OF_CONTROL)
 static struct ns16550_plat ns16550_com1_pdata = {
-	.base = CONFIG_SYS_NS16550_COM1,
+	.base = CFG_SYS_NS16550_COM1,
 	.reg_shift = 2,
-	.clock = CONFIG_SYS_NS16550_CLK,
+	.clock = CFG_SYS_NS16550_CLK,
 	.fcr = UART_FCR_DEFVAL,
 };
 

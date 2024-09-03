@@ -3,7 +3,6 @@
    Copyright (c) 2001 William L. Pitts
 */
 
-#include <common.h>
 #include <command.h>
 #include <cpu_func.h>
 #include <elf.h>
@@ -11,7 +10,7 @@
 #include <net.h>
 #include <vxworks.h>
 #ifdef CONFIG_X86
-#include <vbe.h>
+#include <vesa.h>
 #include <asm/e820.h>
 #include <linux/linkage.h>
 #endif

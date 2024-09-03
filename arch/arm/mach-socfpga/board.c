@@ -46,7 +46,7 @@ void s_init(void) {
 int board_init(void)
 {
 	/* Address of boot parameters for ATAG (if ATAG is used) */
-	gd->bd->bi_boot_params = CONFIG_SYS_SDRAM_BASE + 0x100;
+	gd->bd->bi_boot_params = CFG_SYS_SDRAM_BASE + 0x100;
 
 	return 0;
 }
@@ -103,7 +103,8 @@ __weak int board_fit_config_name_match(const char *name)
 #endif
 
 #if IS_ENABLED(CONFIG_FIT_IMAGE_POST_PROCESS)
-void board_fit_image_post_process(void **p_image, size_t *p_size)
+void board_fit_image_post_process(const void *fit, int node, void **p_image,
+				  size_t *p_size)
 {
 	if (IS_ENABLED(CONFIG_SOCFPGA_SECURE_VAB_AUTH)) {
 		if (socfpga_vendor_authentication(p_image, p_size))
@@ -113,19 +114,20 @@ void board_fit_image_post_process(void **p_image, size_t *p_size)
 #endif
 
 #if !IS_ENABLED(CONFIG_SPL_BUILD) && IS_ENABLED(CONFIG_FIT)
-void board_prep_linux(bootm_headers_t *images)
+void board_prep_linux(struct bootm_headers *images)
 {
-	if (IS_ENABLED(CONFIG_SOCFPGA_SECURE_VAB_AUTH) &&
-	    !IS_ENABLED(CONFIG_SOCFPGA_SECURE_VAB_AUTH_ALLOW_NON_FIT_IMAGE)) {
-		/*
-		 * Ensure the OS is always booted from FIT and with
-		 * VAB signed certificate
-		 */
-		if (!images->fit_uname_cfg) {
+	if (!images->fit_uname_cfg) {
+		if (IS_ENABLED(CONFIG_SOCFPGA_SECURE_VAB_AUTH) &&
+		    !IS_ENABLED(CONFIG_SOCFPGA_SECURE_VAB_AUTH_ALLOW_NON_FIT_IMAGE)) {
+			/*
+			 * Ensure the OS is always booted from FIT and with
+			 * VAB signed certificate
+			 */
 			printf("Please use FIT with VAB signed images!\n");
 			hang();
 		}
-
+	} else {
+		/* Update fdt_addr in enviroment variable */
 		env_set_hex("fdt_addr", (ulong)images->ft_addr);
 		debug("images->ft_addr = 0x%08lx\n", (ulong)images->ft_addr);
 	}

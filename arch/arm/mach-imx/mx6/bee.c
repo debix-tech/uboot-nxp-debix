@@ -243,7 +243,7 @@ int bee_test(struct bee_parameters *p, int region)
 static int region_valid(u32 start, u32 size)
 {
 	if ((start < PHYS_SDRAM) || (start >= (start + size - 1)) ||
-	    (start >= (PHYS_SDRAM + PHYS_SDRAM_SIZE - 1))) {
+	    (start >= (PHYS_SDRAM + gd->ram_size - 1))) {
 		printf("Invalid start 0x%x, size 0x%x\n", start, size);
 		return -EINVAL;
 	}
@@ -276,9 +276,9 @@ static int do_bee_init(struct cmd_tbl *cmdtp, int flag, int argc,
 	struct bee_parameters *p = &para;
 
 #if defined(CONFIG_SYS_ARM_CACHE_WRITETHROUGH)
-	enum dcache_option option = DCACHE_WRITETHROUGH & ~TTB_SECT_XN_MASK;
+	enum dcache_option option = DCACHE_WRITETHROUGH;
 #else
-	enum dcache_option option = DCACHE_WRITEBACK & ~TTB_SECT_XN_MASK;
+	enum dcache_option option = DCACHE_WRITEBACK;
 #endif
 
 	if (argc > 5)

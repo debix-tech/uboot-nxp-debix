@@ -18,7 +18,7 @@
 #include <asm/arch/sys_proto.h>
 #include <asm/setup.h>
 #include <env.h>
-#include <lz4.h>
+#include <u-boot/lz4.h>
 #include <linux/delay.h>
 #include "../lib/avb/fsl/utils.h"
 
@@ -182,7 +182,8 @@ U_BOOT_CMD(
 	"lock_status");
 #endif
 
-#if defined(CONFIG_FLASH_MCUFIRMWARE_SUPPORT) && defined(CONFIG_ARCH_IMX8M)
+#ifdef CONFIG_FLASH_MCUFIRMWARE_SUPPORT
+#if defined (CONFIG_IMX95) || defined(CONFIG_ARCH_IMX8M)
 static int do_bootmcu(struct cmd_tbl *cmdtp, int flag, int argc, char * const argv[])
 {
 	int ret;
@@ -196,9 +197,15 @@ static int do_bootmcu(struct cmd_tbl *cmdtp, int flag, int argc, char * const ar
 		printf("Read MCU images failed!\n");
 		return 1;
 	} else {
+#ifdef CONFIG_ARCH_IMX8M
 		printf("run command: 'bootaux 0x%x'\n",(unsigned int)(ulong)mcu_base_addr);
 
 		sprintf(command, "bootaux 0x%x", (unsigned int)(ulong)mcu_base_addr);
+#else
+		printf("run command: 'bootaux 0 1'\n");
+
+		sprintf(command, "bootaux 0 1");
+#endif
 		ret = run_command(command, 0);
 		if (ret) {
 			printf("run 'bootaux' command failed!\n");
@@ -213,6 +220,7 @@ U_BOOT_CMD(
 	"boot mcu images\n",
 	"boot mcu images from 'mcu_os' partition, only support images run from TCM"
 );
+#endif
 #endif
 
 #ifdef CONFIG_CMD_BOOTA
@@ -579,13 +587,13 @@ end:
 
 #if defined(CONFIG_AVB_SUPPORT) && defined(CONFIG_MMC)
 /* we can use avb to verify Trusty if we want */
-const char *requested_partitions_boot[] = {"boot", "dtbo", "vendor_boot", NULL};
+const char *requested_partitions_boot[] = {"boot", "dtbo", "vendor_boot", "init_boot", NULL};
 const char *requested_partitions_recovery[] = {"recovery", NULL};
 
 static int get_boot_header_version(void)
 {
 	size_t size;
-	struct andr_img_hdr hdr;
+	struct andr_boot_img_hdr_v0 hdr;
 	char partition_name[20];
 
 #ifdef CONFIG_ANDROID_AB_SUPPORT
@@ -606,7 +614,7 @@ static int get_boot_header_version(void)
 
 	/* Read boot header to find the version */
 	if (fsl_avb_ops.read_from_partition(&fsl_avb_ops, partition_name,
-					    0, sizeof(struct andr_img_hdr),
+					    0, sizeof(struct andr_boot_img_hdr_v0),
 					    (void *)&hdr, &size)) {
 		printf("%s load error!\n", partition_name);
 		return -1;
@@ -652,18 +660,21 @@ int do_boota(struct cmd_tbl *cmdtp, int flag, int argc, char * const argv[]) {
 	int boot_header_version = 0;
 	bool check_image_arm64 =  false;
 	bool is_recovery_mode = false;
+	bool with_init_boot = false;
 
 	/* 'hdr' should point to boot.img */
-	struct andr_img_hdr *hdr = NULL;
+	struct andr_boot_img_hdr_v0 *hdr = NULL;
 	struct boot_img_hdr_v3 *hdr_v3 = NULL;
 	struct vendor_boot_img_hdr_v3 *vendor_boot_hdr_v3 = NULL;
 	struct boot_img_hdr_v4 *hdr_v4 = NULL;
+	struct boot_img_hdr_v4 *init_boot_hdr_v4 = NULL;
 	struct vendor_boot_img_hdr_v4 *vendor_boot_hdr_v4 = NULL;
 
 	AvbABFlowResult avb_result;
 	AvbSlotVerifyData *avb_out_data = NULL;
 	AvbPartitionData *avb_loadpart = NULL;
 	AvbPartitionData *avb_vendorboot = NULL;
+	AvbPartitionData *avb_initboot = NULL;
 
 	/* get bootmode, default to boot "boot" */
 	if (argc > 1) {
@@ -693,8 +704,18 @@ int do_boota(struct cmd_tbl *cmdtp, int flag, int argc, char * const argv[]) {
 		goto fail;
 	} else if (boot_header_version < 3) {
 		requested_partitions_boot[2] = NULL;
+	} else if (boot_header_version == 4) {
+		if (fastboot_flash_find_ptn("init_boot_a") == NULL) {
+			with_init_boot = false;
+			requested_partitions_boot[3] = NULL;
+		} else
+			with_init_boot = true;
 	}
 
+#ifdef CONFIG_AUTO_SET_RPMB_KEY
+	if (trusty_rpmb_init())
+		goto fail;
+#endif
 	/* For imx6 on Android, we don't have a/b slot and we want to verify boot/recovery with AVB.
 	 * For imx8 and Android Things we don't have recovery and support a/b slot for boot */
 #ifdef CONFIG_DUAL_BOOTLOADER
@@ -739,6 +760,9 @@ int do_boota(struct cmd_tbl *cmdtp, int flag, int argc, char * const argv[]) {
 		if ((boot_header_version >= 3) &&
 			find_partition_data_by_name("vendor_boot", avb_out_data, &avb_vendorboot))
 			goto fail;
+		if (with_init_boot &&
+			find_partition_data_by_name("init_boot", avb_out_data, &avb_initboot))
+			goto fail;
 #else
 		if (is_recovery_mode) {
 			if (find_partition_data_by_name("recovery", avb_out_data, &avb_loadpart))
@@ -756,6 +780,8 @@ int do_boota(struct cmd_tbl *cmdtp, int flag, int argc, char * const argv[]) {
 			assert(avb_vendorboot != NULL);
 			hdr_v4 = (struct boot_img_hdr_v4 *)avb_loadpart->data;
 			vendor_boot_hdr_v4 = (struct vendor_boot_img_hdr_v4 *)avb_vendorboot->data;
+			if (avb_initboot)
+				init_boot_hdr_v4 = (struct boot_img_hdr_v4 *)avb_initboot->data;
 			/* check the header magic, same for boot header v3 and v4 */
 			if (android_image_check_header_v3(hdr_v4->magic, vendor_boot_hdr_v4->magic)) {
 				printf("boota: bad boot/vendor_boot image magic\n");
@@ -770,8 +796,8 @@ int do_boota(struct cmd_tbl *cmdtp, int flag, int argc, char * const argv[]) {
 				goto fail;
 			}
 		} else {
-			hdr = (struct andr_img_hdr *)avb_loadpart->data;
-			if (android_image_check_header(hdr)) {
+			hdr = (struct andr_boot_img_hdr_v0 *)avb_loadpart->data;
+			if (is_android_boot_image_header((void *)hdr)) {
 				printf("boota: bad boot image magic\n");
 				goto fail;
 			}
@@ -896,69 +922,6 @@ int do_boota(struct cmd_tbl *cmdtp, int flag, int argc, char * const argv[]) {
 #endif /* CONFIG_ARCH_IMX8 || CONFIG_ARCH_IMX8M */
 	}
 
-	/*
-	 * Start loading ramdisk. */
-	/* Load ramdisk except for Android Auto which doesn't support dynamic partition,
-	 * it will only load ramdisk in recovery mode.
-	 */
-	if (boot_header_version == 4) {
-		/*
-		 * concatenate vendor_boot ramdisk and boot ramdisk, load the
-		 * whole ramdisk directly as we don't have multiple ramdisk.
-		 */
-		memcpy((void *)ramdisk_addr, (void *)(ulong)vendor_boot_hdr_v4 +
-			ALIGN(sizeof(struct vendor_boot_img_hdr_v4), vendor_boot_hdr_v4->page_size),
-			vendor_boot_hdr_v4->vendor_ramdisk_size);
-		memcpy((void *)ramdisk_addr + vendor_boot_hdr_v4->vendor_ramdisk_size,
-			(void *)(ulong)hdr_v4 + 4096 + ALIGN(hdr_v4->kernel_size, 4096),
-			hdr_v4->ramdisk_size);
-		ramdisk_size = vendor_boot_hdr_v4->vendor_ramdisk_size + hdr_v4->ramdisk_size;
-
-		/* append build time bootconfig */
-		void *bootconfig_addr = (void *)(ulong)vendor_boot_hdr_v4 +
-					ALIGN(sizeof(struct vendor_boot_img_hdr_v4), vendor_boot_hdr_v4->page_size) +
-					ALIGN(vendor_boot_hdr_v4->vendor_ramdisk_size, vendor_boot_hdr_v4->page_size) +
-					ALIGN(vendor_boot_hdr_v4->dtb_size, vendor_boot_hdr_v4->page_size) +
-					ALIGN(vendor_boot_hdr_v4->vendor_ramdisk_table_size, vendor_boot_hdr_v4->page_size);
-		void *bootconfig_start = (void *)ramdisk_addr + ramdisk_size;
-		memcpy(bootconfig_start, bootconfig_addr, vendor_boot_hdr_v4->bootconfig_size);
-
-		/* append run time bootconfig */
-		uint32_t bootconfig_size;
-		if (append_runtime_bootconfig(bootconfig_start +
-						vendor_boot_hdr_v4->bootconfig_size,
-						&bootconfig_size) < 0) {
-			printf("boota: append runtime bootconfig failed!\n");
-			goto fail;
-		}
-		bootconfig_size += vendor_boot_hdr_v4->bootconfig_size;
-		bootconfig_size += add_bootconfig_trailer((uint64_t)bootconfig_start, bootconfig_size);
-
-		/* update ramdisk size */
-		ramdisk_size += bootconfig_size;
-	} else if (boot_header_version == 3) {
-		/*
-		 * concatenate vendor_boot ramdisk and boot ramdisk.
-		 */
-		memcpy((void *)ramdisk_addr, (void *)(ulong)vendor_boot_hdr_v3 +
-			ALIGN(sizeof(struct vendor_boot_img_hdr_v3), vendor_boot_hdr_v3->page_size),
-			vendor_boot_hdr_v3->vendor_ramdisk_size);
-		memcpy((void *)ramdisk_addr + vendor_boot_hdr_v3->vendor_ramdisk_size,
-			(void *)(ulong)hdr_v3 + 4096 + ALIGN(hdr_v3->kernel_size, 4096),
-			hdr_v3->ramdisk_size);
-		ramdisk_size = vendor_boot_hdr_v3->vendor_ramdisk_size + hdr_v3->ramdisk_size;
-	} else {
-#if !defined(CONFIG_SYSTEM_RAMDISK_SUPPORT) || defined(CONFIG_ANDROID_DYNAMIC_PARTITION)
-		memcpy((void *)ramdisk_addr, (void *)(ulong)hdr + hdr->page_size +
-			ALIGN(hdr->kernel_size, hdr->page_size), hdr->ramdisk_size);
-#else
-		if (is_recovery_mode)
-			memcpy((void *)ramdisk_addr, (void *)(ulong)hdr + hdr->page_size +
-				ALIGN(hdr->kernel_size, hdr->page_size), hdr->ramdisk_size);
-#endif
-		ramdisk_size = hdr->ramdisk_size;
-	}
-
 	/* Start loading the dtb file */
 	u32 fdt_addr = 0;
 	u32 fdt_size = 0;
@@ -1021,6 +984,89 @@ int do_boota(struct cmd_tbl *cmdtp, int flag, int argc, char * const argv[]) {
 	memcpy((void *)(ulong)fdt_addr, (void *)((ulong)dt_img +
 			be32_to_cpu(dt_entry->dt_offset)), fdt_size);
 
+
+	/*
+	 * Start loading ramdisk. */
+	/* Load ramdisk except for Android Auto which doesn't support dynamic partition,
+	 * it will only load ramdisk in recovery mode.
+	 */
+	/* Check if we have overlap between ramdisk, kernel and dtb */
+	if ((ramdisk_addr >= kernel_addr) && (ramdisk_addr < ALIGN(fdt_addr + fdt_size, 4096))) {
+		ulong ramdisk_addr_relocate = (ulong)ALIGN(fdt_addr + fdt_size, 4096);
+
+		printf("boota: ramdisk overlap detected!!! ");
+		printf("redirecting ramdisk from 0x%08x to 0x%08x\n", (uint32_t)ramdisk_addr, (uint32_t)ramdisk_addr_relocate);
+
+		/* relocate ramdisk*/
+		ramdisk_addr = ramdisk_addr_relocate;
+	}
+
+	if (boot_header_version == 4) {
+		/*
+		 * concatenate vendor_boot ramdisk and boot ramdisk, load the
+		 * whole ramdisk directly as we don't have multiple ramdisk.
+		 */
+		memcpy((void *)ramdisk_addr, (void *)(ulong)vendor_boot_hdr_v4 +
+			ALIGN(sizeof(struct vendor_boot_img_hdr_v4), vendor_boot_hdr_v4->page_size),
+			vendor_boot_hdr_v4->vendor_ramdisk_size);
+
+		if (with_init_boot) {
+			memcpy((void *)ramdisk_addr + vendor_boot_hdr_v4->vendor_ramdisk_size,
+				(void *)(ulong)init_boot_hdr_v4 + 4096 + ALIGN(init_boot_hdr_v4->kernel_size, 4096),
+				init_boot_hdr_v4->ramdisk_size);
+			ramdisk_size = vendor_boot_hdr_v4->vendor_ramdisk_size + init_boot_hdr_v4->ramdisk_size;
+		} else {
+			memcpy((void *)ramdisk_addr + vendor_boot_hdr_v4->vendor_ramdisk_size,
+				(void *)(ulong)hdr_v4 + 4096 + ALIGN(hdr_v4->kernel_size, 4096),
+				hdr_v4->ramdisk_size);
+			ramdisk_size = vendor_boot_hdr_v4->vendor_ramdisk_size + hdr_v4->ramdisk_size;
+		}
+
+		/* append build time bootconfig */
+		void *bootconfig_addr = (void *)(ulong)vendor_boot_hdr_v4 +
+					ALIGN(sizeof(struct vendor_boot_img_hdr_v4), vendor_boot_hdr_v4->page_size) +
+					ALIGN(vendor_boot_hdr_v4->vendor_ramdisk_size, vendor_boot_hdr_v4->page_size) +
+					ALIGN(vendor_boot_hdr_v4->dtb_size, vendor_boot_hdr_v4->page_size) +
+					ALIGN(vendor_boot_hdr_v4->vendor_ramdisk_table_size, vendor_boot_hdr_v4->page_size);
+		void *bootconfig_start = (void *)ramdisk_addr + ramdisk_size;
+		memcpy(bootconfig_start, bootconfig_addr, vendor_boot_hdr_v4->bootconfig_size);
+
+		/* append run time bootconfig */
+		uint32_t bootconfig_size;
+		if (append_runtime_bootconfig(bootconfig_start +
+						vendor_boot_hdr_v4->bootconfig_size,
+						&bootconfig_size, (void *)(ulong)fdt_addr) < 0) {
+			printf("boota: append runtime bootconfig failed!\n");
+			goto fail;
+		}
+		bootconfig_size += vendor_boot_hdr_v4->bootconfig_size;
+		bootconfig_size += add_bootconfig_trailer((uint64_t)bootconfig_start, bootconfig_size);
+
+		/* update ramdisk size */
+		ramdisk_size += bootconfig_size;
+	} else if (boot_header_version == 3) {
+		/*
+		 * concatenate vendor_boot ramdisk and boot ramdisk.
+		 */
+		memcpy((void *)ramdisk_addr, (void *)(ulong)vendor_boot_hdr_v3 +
+			ALIGN(sizeof(struct vendor_boot_img_hdr_v3), vendor_boot_hdr_v3->page_size),
+			vendor_boot_hdr_v3->vendor_ramdisk_size);
+		memcpy((void *)ramdisk_addr + vendor_boot_hdr_v3->vendor_ramdisk_size,
+			(void *)(ulong)hdr_v3 + 4096 + ALIGN(hdr_v3->kernel_size, 4096),
+			hdr_v3->ramdisk_size);
+		ramdisk_size = vendor_boot_hdr_v3->vendor_ramdisk_size + hdr_v3->ramdisk_size;
+	} else {
+#if !defined(CONFIG_SYSTEM_RAMDISK_SUPPORT) || defined(CONFIG_ANDROID_DYNAMIC_PARTITION)
+		memcpy((void *)ramdisk_addr, (void *)(ulong)hdr + hdr->page_size +
+			ALIGN(hdr->kernel_size, hdr->page_size), hdr->ramdisk_size);
+#else
+		if (is_recovery_mode)
+			memcpy((void *)ramdisk_addr, (void *)(ulong)hdr + hdr->page_size +
+				ALIGN(hdr->kernel_size, hdr->page_size), hdr->ramdisk_size);
+#endif
+		ramdisk_size = hdr->ramdisk_size;
+	}
+
 	/* Combine cmdline */
 	if (boot_header_version == 4) {
 		android_image_get_kernel_v3((struct boot_img_hdr_v3 *)hdr_v4,
@@ -1029,7 +1075,7 @@ int do_boota(struct cmd_tbl *cmdtp, int flag, int argc, char * const argv[]) {
 		android_image_get_kernel_v3(hdr_v3, vendor_boot_hdr_v3, false);
 	} else {
 		if (check_image_arm64) {
-			android_image_get_kernel(hdr, 0, NULL, NULL);
+			android_image_get_kernel(hdr, NULL, 0, NULL, NULL);
 		} else {
 			kernel_addr = (ulong)(hdr->kernel_addr - hdr->page_size);
 		}
@@ -1094,10 +1140,17 @@ int do_boota(struct cmd_tbl *cmdtp, int flag, int argc, char * const argv[]) {
 
 	/* lock the boot status and rollback_idx preventing Linux modify it */
 	trusty_lock_boot_state();
-	/* lock the boot state so linux can't use some hwcrypto commands. */
-	hwcrypto_lock_boot_state();
-	/* put ql-tipc to release resource for Linux */
-	trusty_ipc_shutdown();
+#endif
+
+#if defined(CONFIG_IMX_HAB) && defined(CONFIG_CMD_PRIBLOB)
+        /*
+         * prevent the dek blob usable to decrypt an encrypted image after
+         * encrypted boot stage has passed.
+         */
+        if(run_command("set_priblob_bitfield", 0)){
+                printf("set priblob bitfield failed!\n");
+        }
+
 #endif
 
 	/* Free AVB data */

@@ -12,6 +12,7 @@
 #include <log.h>
 #include <nand.h>
 #include <reset.h>
+#include <asm/gpio.h>
 #include <dm/device_compat.h>
 #include <linux/bitfield.h>
 #include <linux/bitops.h>
@@ -19,6 +20,9 @@
 #include <linux/err.h>
 #include <linux/iopoll.h>
 #include <linux/ioport.h>
+#include <linux/mtd/rawnand.h>
+#include <linux/printk.h>
+#include <linux/time.h>
 
 /* Bad block marker length */
 #define FMC2_BBM_LEN			2
@@ -124,8 +128,6 @@
 #define FMC2_BCHDSR4_EBP7		GENMASK(12, 0)
 #define FMC2_BCHDSR4_EBP8		GENMASK(28, 16)
 
-#define FMC2_NSEC_PER_SEC		1000000000L
-
 #define FMC2_TIMEOUT_5S			5000000
 
 enum stm32_fmc2_ecc {
@@ -148,6 +150,7 @@ struct stm32_fmc2_timings {
 struct stm32_fmc2_nand {
 	struct nand_chip chip;
 	struct stm32_fmc2_timings timings;
+	struct gpio_desc wp_gpio;
 	int ncs;
 	int cs_used[FMC2_MAX_CE];
 };
@@ -599,7 +602,7 @@ static void stm32_fmc2_nfc_calc_timings(struct nand_chip *chip,
 	struct stm32_fmc2_nand *nand = to_fmc2_nand(chip);
 	struct stm32_fmc2_timings *tims = &nand->timings;
 	unsigned long hclk = clk_get_rate(&nfc->clk);
-	unsigned long hclkp = FMC2_NSEC_PER_SEC / (hclk / 1000);
+	unsigned long hclkp = NSEC_PER_SEC / (hclk / 1000);
 	unsigned long timing, tar, tclr, thiz, twait;
 	unsigned long tset_mem, tset_att, thold_mem, thold_att;
 
@@ -732,6 +735,9 @@ static int stm32_fmc2_nfc_setup_interface(struct mtd_info *mtd, int chipnr,
 	if (IS_ERR(sdrt))
 		return PTR_ERR(sdrt);
 
+	if (sdrt->tRC_min < 30000)
+		return -EOPNOTSUPP;
+
 	if (chipnr == NAND_DATA_IFACE_CHECK_ONLY)
 		return 0;
 
@@ -823,7 +829,10 @@ static int stm32_fmc2_nfc_parse_child(struct stm32_fmc2_nfc *nfc, ofnode node)
 		nand->cs_used[i] = cs[i];
 	}
 
-	nand->chip.flash_node = ofnode_to_offset(node);
+	gpio_request_by_name_nodev(node, "wp-gpios", 0, &nand->wp_gpio,
+				   GPIOD_IS_OUT | GPIOD_IS_OUT_ACTIVE);
+
+	nand->chip.flash_node = node;
 
 	return 0;
 }
@@ -970,6 +979,10 @@ static int stm32_fmc2_nfc_probe(struct udevice *dev)
 	chip->ecc.mode = NAND_ECC_HW;
 	chip->ecc.size = FMC2_ECC_STEP_SIZE;
 	chip->ecc.strength = FMC2_ECC_BCH8;
+
+	/* Disable Write Protect */
+	if (dm_gpio_is_valid(&nand->wp_gpio))
+		dm_gpio_set_value(&nand->wp_gpio, 0);
 
 	ret = nand_scan_ident(mtd, nand->ncs, NULL);
 	if (ret)

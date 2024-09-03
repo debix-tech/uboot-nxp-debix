@@ -228,19 +228,20 @@ struct sunxi_ccm_reg {
 
 /* pll1 bit field */
 #define CCM_PLL1_CTRL_EN		BIT(31)
+#define CCM_PLL1_LDO_EN			BIT(30)
 #define CCM_PLL1_LOCK_EN		BIT(29)
 #define CCM_PLL1_LOCK			BIT(28)
 #define CCM_PLL1_OUT_EN			BIT(27)
 #define CCM_PLL1_CLOCK_TIME_2		(2 << 24)
 #define CCM_PLL1_CTRL_P(p)		((p) << 16)
-#define CCM_PLL1_CTRL_N(n)		((n) << 8)
+#define CCM_PLL1_CTRL_N(n)		(((n) - 1) << 8)
 
 /* pll5 bit field */
 #define CCM_PLL5_CTRL_EN		BIT(31)
 #define CCM_PLL5_LOCK_EN		BIT(29)
 #define CCM_PLL5_LOCK			BIT(28)
 #define CCM_PLL5_OUT_EN			BIT(27)
-#define CCM_PLL5_CTRL_N(n)		((n) << 8)
+#define CCM_PLL5_CTRL_N(n)		(((n) - 1) << 8)
 #define CCM_PLL5_CTRL_DIV1(div1)	((div1) << 0)
 #define CCM_PLL5_CTRL_DIV2(div0)	((div0) << 1)
 
@@ -248,6 +249,8 @@ struct sunxi_ccm_reg {
 #define CCM_PLL6_CTRL_EN		BIT(31)
 #define CCM_PLL6_LOCK_EN		BIT(29)
 #define CCM_PLL6_LOCK			BIT(28)
+#define CCM_PLL6_CTRL_P0_SHIFT		16
+#define CCM_PLL6_CTRL_P0_MASK		(0x7 << CCM_PLL6_CTRL_P0_SHIFT)
 #define CCM_PLL6_CTRL_N_SHIFT		8
 #define CCM_PLL6_CTRL_N_MASK		(0xff << CCM_PLL6_CTRL_N_SHIFT)
 #define CCM_PLL6_CTRL_DIV1_SHIFT	0
@@ -263,7 +266,7 @@ struct sunxi_ccm_reg {
 #define CCM_CPU_AXI_AXI_MASK		0x3
 #define CCM_CPU_AXI_DEFAULT_FACTORS	0x301
 
-#ifdef CONFIG_MACH_SUN50I_H6
+#ifdef CONFIG_MACH_SUN50I_H6				/* H6 */
 #define CCM_PLL6_DEFAULT		0xa0006300
 
 /* psi_ahb1_ahb2 bit field */
@@ -274,7 +277,7 @@ struct sunxi_ccm_reg {
 
 /* apb1 bit field */
 #define CCM_APB1_DEFAULT		0x03000102
-#elif CONFIG_MACH_SUN50I_H616
+#elif CONFIG_MACH_SUN50I_H616				/* H616 */
 #define CCM_PLL6_DEFAULT		0xa8003100
 
 /* psi_ahb1_ahb2 bit field */
@@ -284,6 +287,11 @@ struct sunxi_ccm_reg {
 #define CCM_AHB3_DEFAULT		0x03000002
 
 /* apb1 bit field */
+#define CCM_APB1_DEFAULT		0x03000102
+#elif CONFIG_MACH_SUN8I_R528				/* R528 */
+#define CCM_PLL6_DEFAULT		0xe8216300
+#define CCM_PSI_AHB1_AHB2_DEFAULT	0x03000002
+//#define CCM_AHB3_DEFAULT		0x03000002
 #define CCM_APB1_DEFAULT		0x03000102
 #endif
 
@@ -326,7 +334,7 @@ struct sunxi_ccm_reg {
 #define CCM_MMC_CTRL_M(x)		((x) - 1)
 #define CCM_MMC_CTRL_N(x)		((x) << 8)
 #define CCM_MMC_CTRL_OSCM24		(0x0 << 24)
-#define CCM_MMC_CTRL_PLL6X2		(0x1 << 24)
+#define CCM_MMC_CTRL_PLL6		(0x1 << 24)
 #define CCM_MMC_CTRL_PLL_PERIPH2X2	(0x2 << 24)
 #define CCM_MMC_CTRL_ENABLE		(0x1 << 31)
 /* H6 doesn't have these delays */

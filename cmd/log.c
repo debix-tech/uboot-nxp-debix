@@ -352,7 +352,7 @@ static int do_log_rec(struct cmd_tbl *cmdtp, int flag, int argc,
 	if (argc < 7)
 		return CMD_RET_USAGE;
 	cat = log_get_cat_by_name(argv[1]);
-	level = simple_strtoul(argv[2], &end, 10);
+	level = dectoul(argv[2], &end);
 	if (end == argv[2]) {
 		level = log_get_level_by_name(argv[2]);
 
@@ -366,7 +366,7 @@ static int do_log_rec(struct cmd_tbl *cmdtp, int flag, int argc,
 		return CMD_RET_USAGE;
 	}
 	file = argv[3];
-	line = simple_strtoul(argv[4], NULL, 10);
+	line = dectoul(argv[4], NULL);
 	func = argv[5];
 	msg = argv[6];
 	if (_log(cat, level, file, line, func, "%s\n", msg))
@@ -375,8 +375,7 @@ static int do_log_rec(struct cmd_tbl *cmdtp, int flag, int argc,
 	return 0;
 }
 
-#ifdef CONFIG_SYS_LONGHELP
-static char log_help_text[] =
+U_BOOT_LONGHELP(log,
 	"level [<level>] - get/set log level\n"
 	"categories - list log categories\n"
 	"drivers - list log drivers\n"
@@ -405,9 +404,7 @@ static char log_help_text[] =
 	"\tc=category, l=level, F=file, L=line number, f=function, m=msg\n"
 	"\tor 'default', or 'all' for all\n"
 	"log rec <category> <level> <file> <line> <func> <message> - "
-		"output a log record"
-	;
-#endif
+		"output a log record");
 
 U_BOOT_CMD_WITH_SUBCMDS(log, "log system", log_help_text,
 	U_BOOT_SUBCMD_MKENT(level, 2, 1, do_log_level),

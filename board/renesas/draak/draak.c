@@ -6,7 +6,6 @@
  * Copyright (C) 2017 Marek Vasut <marek.vasut+renesas@gmail.com>
  */
 
-#include <common.h>
 #include <cpu_func.h>
 #include <hang.h>
 #include <init.h>
@@ -23,9 +22,8 @@
 #include <asm/arch/sys_proto.h>
 #include <asm/gpio.h>
 #include <asm/arch/gpio.h>
-#include <asm/arch/rmobile.h>
+#include <asm/arch/renesas.h>
 #include <asm/arch/rcar-mstp.h>
-#include <asm/arch/sh_sdhi.h>
 #include <i2c.h>
 #include <mmc.h>
 
@@ -38,7 +36,7 @@ DECLARE_GLOBAL_DATA_PTR;
 
 int board_early_init_f(void)
 {
-#if defined(CONFIG_SYS_I2C) && defined(CONFIG_SYS_I2C_SH)
+#if CONFIG_IS_ENABLED(SYS_I2C_LEGACY) && defined(CONFIG_SYS_I2C_SH)
 	/* DVFS for reset */
 	mstp_clrbits_le32(SMSTPCR9, SMSTPCR9, DVFS_MSTP926);
 #endif
@@ -54,9 +52,6 @@ int board_early_init_f(void)
 
 int board_init(void)
 {
-	/* adress of boot parameters */
-	gd->bd->bi_boot_params = CONFIG_SYS_TEXT_BASE + 0x50000;
-
 	/* USB1 pull-up */
 	setbits_le32(PFC_PUEN6, PUEN_USB1_OVC | PUEN_USB1_PWEN);
 
@@ -69,13 +64,4 @@ int board_init(void)
 	setbits_le16(HSUSB_REG_LPSTS, HSUSB_REG_LPSTS_SUSPM_NORMAL);
 
 	return 0;
-}
-
-#define RST_BASE	0xE6160000
-#define RST_CA53RESCNT	(RST_BASE + 0x44)
-#define RST_CA53_CODE	0x5A5A000F
-
-void reset_cpu(ulong addr)
-{
-	writel(RST_CA53_CODE, RST_CA53RESCNT);
 }

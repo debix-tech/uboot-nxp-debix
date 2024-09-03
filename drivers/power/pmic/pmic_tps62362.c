@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * (C) Copyright 2014 Texas Instruments Incorporated -  http://www.ti.com
+ * (C) Copyright 2014 Texas Instruments Incorporated -  https://www.ti.com
  * Author: Felipe Balbi <balbi@ti.com>
  */
 
@@ -11,7 +11,7 @@
 #include <power/tps62362.h>
 
 #if CONFIG_IS_ENABLED(DM_I2C)
-struct udevice *tps62362_dev __attribute__((section(".data"))) = NULL;
+struct udevice *tps62362_dev __section(".data") = NULL;
 #endif
 
 /**

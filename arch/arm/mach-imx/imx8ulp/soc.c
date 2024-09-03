@@ -1,18 +1,21 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright 2021 NXP
+ * Copyright 2021-2022 NXP
  */
 
 #include <asm/io.h>
-#include <asm/global_data.h>
 #include <asm/arch/clock.h>
 #include <asm/arch/imx-regs.h>
 #include <asm/arch/sys_proto.h>
 #include <asm/armv8/mmu.h>
 #include <asm/mach-imx/boot_mode.h>
+#include <asm/global_data.h>
 #include <efi_loader.h>
+#include <event.h>
 #include <spl.h>
 #include <asm/arch/rdc.h>
+#include <asm/mach-imx/ele_api.h>
+#include <asm/mach-imx/mu_hal.h>
 #include <cpu_func.h>
 #include <asm/setup.h>
 #include <dm.h>
@@ -21,64 +24,17 @@
 #include <dm/uclass.h>
 #include <dm/device.h>
 #include <dm/uclass-internal.h>
-#include <asm/arch/pcc.h>
-#include <asm/arch/s400_api.h>
 #include <fuse.h>
-#include <asm/mach-imx/optee.h>
+#include <thermal.h>
+#include <linux/iopoll.h>
 #include <env.h>
 #include <env_internal.h>
-#include <linux/iopoll.h>
-#include <thermal.h>
+#include <asm/mach-imx/optee.h>
+#include <kaslr.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
 struct rom_api *g_rom_api = (struct rom_api *)0x1980;
-
-enum boot_device get_boot_device(void)
-{
-	volatile gd_t *pgd = gd;
-	int ret;
-	u32 boot;
-	u16 boot_type;
-	u8 boot_instance;
-	enum boot_device boot_dev = SD1_BOOT;
-
-	ret = g_rom_api->query_boot_infor(QUERY_BT_DEV, &boot,
-					  ((uintptr_t)&boot) ^ QUERY_BT_DEV);
-	gd = pgd;
-
-	if (ret != ROM_API_OKAY) {
-		puts("ROMAPI: failure at query_boot_info\n");
-		return -1;
-	}
-
-	boot_type = boot >> 16;
-	boot_instance = (boot >> 8) & 0xff;
-
-	switch (boot_type) {
-	case BT_DEV_TYPE_SD:
-		boot_dev = boot_instance + SD1_BOOT;
-		break;
-	case BT_DEV_TYPE_MMC:
-		boot_dev = boot_instance + MMC1_BOOT;
-		break;
-	case BT_DEV_TYPE_NAND:
-		boot_dev = NAND_BOOT;
-		break;
-	case BT_DEV_TYPE_FLEXSPINOR:
-		boot_dev = QSPI_BOOT;
-		break;
-	case BT_DEV_TYPE_USB:
-		boot_dev = boot_instance + USB_BOOT;
-		break;
-	default:
-		break;
-	}
-
-	debug("boot dev %d\n", boot_dev);
-
-	return boot_dev;
-}
 
 bool is_usb_boot(void)
 {
@@ -106,15 +62,12 @@ __weak int board_mmc_get_env_dev(int devno)
 
 int mmc_get_env_dev(void)
 {
-	volatile gd_t *pgd = gd;
 	int ret;
 	u32 boot;
 	u16 boot_type;
 	u8 boot_instance;
 
-	ret = g_rom_api->query_boot_infor(QUERY_BT_DEV, &boot,
-					  ((uintptr_t)&boot) ^ QUERY_BT_DEV);
-	gd = pgd;
+	ret = rom_api_query_boot_infor(QUERY_BT_DEV, &boot);
 
 	if (ret != ROM_API_OKAY) {
 		puts("ROMAPI: failure at query_boot_info\n");
@@ -150,9 +103,84 @@ int board_usb_gadget_port_auto(void)
 }
 #endif
 
+static void set_cpu_info(struct ele_get_info_data *info)
+{
+	gd->arch.soc_rev = info->soc;
+	gd->arch.lifecycle = info->lc;
+	memcpy((void *)&gd->arch.uid, &info->uid, 4 * sizeof(u32));
+}
+
+u32 get_cpu_speed_grade_hz(void)
+{
+	int ret;
+	u32 val;
+	u32 speed = MHZ(800);
+
+	ret = fuse_read(3, 1, &val);
+	if (!ret) {
+		val >>= 14;
+		val &= 0x3;
+
+		switch (val) {
+		case 0x1:
+			speed = MHZ(900); /* 900Mhz*/
+			break;
+		default:
+			speed = MHZ(800); /* 800Mhz*/
+		}
+	}
+	return speed;
+}
+
+static u32 get_cpu_variant_type(u32 type)
+{
+	u32 val;
+	int ret;
+	ret = fuse_read(3, 2, &val);
+	if (!ret) {
+		bool epdc_disable = !!(val & BIT(23));
+		bool core1_disable = !!(val & BIT(15));
+		bool gpu_disable = false;
+		bool a35_900mhz = (get_cpu_speed_grade_hz() == MHZ(900));
+
+		if ((val & (BIT(18) | BIT(19))) == (BIT(18) | BIT(19)))
+			gpu_disable = true;
+
+		if (epdc_disable && gpu_disable)
+			return core1_disable? (type + 4): (type + 3);
+		else if (epdc_disable && a35_900mhz)
+			return MXC_CPU_IMX8ULPSC;
+		else if (epdc_disable)
+			return core1_disable? (type + 2): (type + 1);
+	}
+
+	return type;
+}
+
+static bool is_psw_active_disabled(u32 psw_mask)
+{
+	u32 psw_active = 0xfffff, powersys_otp_valid;
+	int ret;
+
+	ret = fuse_read(3, 5, &powersys_otp_valid);
+	if (!ret && (powersys_otp_valid & 0x8000)) {
+		ret = fuse_read(5, 5, &psw_active);
+		if (ret)
+			psw_active = 0xfffff;
+	}
+
+	if ((psw_active & psw_mask) == psw_mask)
+		return false;
+
+	return true;
+}
+
 u32 get_cpu_rev(void)
 {
-	return (MXC_CPU_IMX8ULP << 12) | CHIP_REV_1_0;
+	u32 rev = (gd->arch.soc_rev >> 24) - 0xa0;
+
+	return (get_cpu_variant_type(MXC_CPU_IMX8ULP) << 12) |
+		(CHIP_REV_1_0 + rev);
 }
 
 enum bt_mode get_boot_mode(void)
@@ -175,14 +203,70 @@ enum bt_mode get_boot_mode(void)
 
 bool m33_image_booted(void)
 {
-	u32 gp6 = 0;
+	if (IS_ENABLED(CONFIG_SPL_BUILD)) {
+		u32 gp6 = 0;
 
-	/* DGO_GP6 */
-	gp6 = readl(SIM_SEC_BASE_ADDR + 0x28);
-	if (gp6 & (1 << 5))
-		return true;
+		/* DGO_GP6 */
+		gp6 = readl(SIM_SEC_BASE_ADDR + 0x28);
+		if (gp6 & BIT(5))
+			return true;
 
-	return false;
+		return false;
+	} else {
+		u32 gpr0 = readl(SIM1_BASE_ADDR);
+		if (gpr0 & BIT(0))
+			return true;
+
+		return false;
+	}
+}
+
+bool rdc_enabled_in_boot(void)
+{
+	if (IS_ENABLED(CONFIG_SPL_BUILD)) {
+		u32 val = 0;
+		int ret;
+		bool rdc_en = true; /* Default assume DBD_EN is set */
+
+		/* Read DBD_EN fuse */
+		ret = fuse_read(8, 1, &val);
+		if (!ret)
+			rdc_en = !!(val & 0x200); /* only A1 part uses DBD_EN, so check DBD_EN new place*/
+
+		return rdc_en;
+	} else {
+		u32 gpr0 = readl(SIM1_BASE_ADDR);
+		if (gpr0 & 0x2)
+			return true;
+
+		return false;
+	}
+}
+
+static void spl_pass_boot_info(void)
+{
+	if (IS_ENABLED(CONFIG_SPL_BUILD)) {
+		bool m33_booted = m33_image_booted();
+		bool rdc_en = rdc_enabled_in_boot();
+		u32 val = 0;
+
+		if (m33_booted)
+			val |= 0x1;
+
+		if (rdc_en)
+			val |= 0x2;
+
+		writel(val, SIM1_BASE_ADDR);
+	}
+}
+
+bool is_m33_handshake_necessary(void)
+{
+	/* Only need handshake in u-boot */
+	if (!IS_ENABLED(CONFIG_SPL_BUILD))
+		return (m33_image_booted() || rdc_enabled_in_boot());
+	else
+		return false;
 }
 
 int m33_image_handshake(ulong timeout_ms)
@@ -198,14 +282,12 @@ int m33_image_handshake(ulong timeout_ms)
 	 * Wait m33 to set FCR F0 flag of MU0_MUA
 	 * Clear FCR F0 flag of MU0_MUB after m33 has set FCR F0 flag of MU0_MUA
 	 */
-	ret = readl_poll_sleep_timeout(MU0_B_BASE_ADDR + 0x104,
-		fsr, fsr & BIT(0), 10, timeout_us);
-	if (ret == 0)
+	ret = readl_poll_sleep_timeout(MU0_B_BASE_ADDR + 0x104, fsr, fsr & BIT(0), 10, timeout_us);
+	if (!ret)
 		clrbits_le32(MU0_B_BASE_ADDR + 0x100, BIT(0));
 
 	return ret;
 }
-
 
 #define CMC_SRS_TAMPER                    BIT(31)
 #define CMC_SRS_SECURITY                  BIT(30)
@@ -273,22 +355,44 @@ static char *get_reset_cause(char *ret)
 #if defined(CONFIG_DISPLAY_CPUINFO)
 const char *get_imx_type(u32 imxtype)
 {
-	return "8ULP";
+	switch (imxtype) {
+	case MXC_CPU_IMX8ULP:
+		return "8ULP(Dual 7)";/* iMX8ULP Dual core 7D/7C */
+	case MXC_CPU_IMX8ULPD5:
+		return "8ULP(Dual 5)";/* iMX8ULP Dual core 5D/5C, EPDC disabled */
+	case MXC_CPU_IMX8ULPS5:
+		return "8ULP(Solo 5)";/* iMX8ULP Single core 5D/5C, EPDC disabled */
+	case MXC_CPU_IMX8ULPD3:
+		return "8ULP(Dual 3)";/* iMX8ULP Dual core 3D/3C, EPDC + GPU disabled */
+	case MXC_CPU_IMX8ULPS3:
+		return "8ULP(Solo 3)";/* iMX8ULP Single core 3D/3C, EPDC + GPU disabled */
+	case MXC_CPU_IMX8ULPSC:
+		return "8ULP(SC)";/* iMX8ULP SC part, 900Mhz + EPDC disabled */
+	default:
+		return "??";
+	}
 }
 
 int print_cpuinfo(void)
 {
-	u32 cpurev;
+	u32 cpurev, max_freq;
 	char cause[18];
 
 	cpurev = get_cpu_rev();
 
-	printf("CPU:   i.MX%s rev%d.%d at %d MHz\n",
-	       get_imx_type((cpurev & 0xFF000) >> 12),
-	       (cpurev & 0x000F0) >> 4, (cpurev & 0x0000F) >> 0,
-	       mxc_get_clock(MXC_ARM_CLK) / 1000000);
+	printf("CPU:   i.MX%s rev%d.%d",
+		get_imx_type((cpurev & 0x1FF000) >> 12),
+		(cpurev & 0x000F0) >> 4, (cpurev & 0x0000F) >> 0);
 
-#if defined(CONFIG_IMX_PMC_TEMPERATURE)
+	max_freq = get_cpu_speed_grade_hz();
+	if (!max_freq || max_freq == mxc_get_clock(MXC_ARM_CLK)) {
+		printf(" at %dMHz\n", mxc_get_clock(MXC_ARM_CLK) / 1000000);
+	} else {
+		printf(" %d MHz (running at %d MHz)\n", max_freq / 1000000,
+			   mxc_get_clock(MXC_ARM_CLK) / 1000000);
+	}
+
+#if defined(CONFIG_SCMI_THERMAL)
 	struct udevice *udev;
 	int ret, temp;
 
@@ -456,7 +560,7 @@ static unsigned int imx8ulp_find_dram_entry_in_mem_map(void)
 	int i;
 
 	for (i = 0; i < ARRAY_SIZE(imx8ulp_arm64_mem_map); i++)
-		if (imx8ulp_arm64_mem_map[i].phys == CONFIG_SYS_SDRAM_BASE)
+		if (imx8ulp_arm64_mem_map[i].phys == CFG_SYS_SDRAM_BASE)
 			return i;
 
 	hang();	/* Entry not found, this must never happen. */
@@ -593,18 +697,18 @@ phys_size_t get_effective_memsize(void)
 	return gd->ram_size;
 }
 
-#ifdef CONFIG_SERIAL_TAG
+#ifdef CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG
 void get_board_serial(struct tag_serialnr *serialnr)
 {
 	u32 uid[4];
 	u32 res;
 	int ret;
 
-	ret = ahab_read_common_fuse(1, uid, 4, &res);
+	ret = ele_read_common_fuse(1, uid, 4, &res);
 	if (ret)
-		printf("ahab read fuse failed %d, 0x%x\n", ret, res);
+		printf("ele read fuse failed %d, 0x%x\n", ret, res);
 	else
-		debug("UID 0x%x,0x%x,0x%x,0x%x\n", uid[0], uid[1], uid[2], uid[3]);
+		printf("UID 0x%x,0x%x,0x%x,0x%x\n", uid[0], uid[1], uid[2], uid[3]);
 
 	serialnr->low = uid[0];
 	serialnr->high = uid[3];
@@ -630,40 +734,72 @@ static void set_core0_reset_vector(u32 entry)
 	setbits_le32(SIM1_BASE_ADDR + 0x8, (0x1 << 26));
 }
 
+/* Not used now */
 int trdc_set_access(void)
 {
 	/*
-	* TRDC mgr + 4 MBC + 2 MRC.
-	* S400 should already configure when release RDC
-	* A35 only map non-secure region for pbridge0 and 1, set sec_access to false
-	*/
-	trdc_mbc_set_access(2, 7, 0, 49, false);
-	trdc_mbc_set_access(2, 7, 0, 50, false);
-	trdc_mbc_set_access(2, 7, 0, 51, false);
-	trdc_mbc_set_access(2, 7, 0, 52, false);
-	trdc_mbc_set_access(2, 7, 0, 53, false);
-	trdc_mbc_set_access(2, 7, 0, 54, false);
+	 * TRDC mgr + 4 MBC + 2 MRC.
+	 */
+	trdc_mbc_set_access(2, 7, 0, 49, true);
+	trdc_mbc_set_access(2, 7, 0, 50, true);
+	trdc_mbc_set_access(2, 7, 0, 51, true);
+	trdc_mbc_set_access(2, 7, 0, 52, true);
+	trdc_mbc_set_access(2, 7, 0, 53, true);
+	trdc_mbc_set_access(2, 7, 0, 54, true);
 
-	/* CGC0: PBridge0 slot 47 */
+	/* 0x1fff8000 used for resource table by remoteproc */
+	trdc_mbc_set_access(0, 7, 2, 31, false);
+
+	/* CGC0: PBridge0 slot 47 and PCC0 slot 48 */
 	trdc_mbc_set_access(2, 7, 0, 47, false);
+	trdc_mbc_set_access(2, 7, 0, 48, false);
+
+	/* PCC1 */
+	trdc_mbc_set_access(2, 7, 1, 17, false);
+	trdc_mbc_set_access(2, 7, 1, 34, false);
 
 	/* Iomuxc0: : PBridge1 slot 33 */
 	trdc_mbc_set_access(2, 7, 1, 33, false);
 
 	/* flexspi0 */
+	trdc_mbc_set_access(2, 7, 0, 57, false);
 	trdc_mrc_region_set_access(0, 7, 0x04000000, 0x0c000000, false);
 
 	/* tpm0: PBridge1 slot 21 */
 	trdc_mbc_set_access(2, 7, 1, 21, false);
 	/* lpi2c0: PBridge1 slot 24 */
 	trdc_mbc_set_access(2, 7, 1, 24, false);
+
+	/* Allow M33 to access TRDC MGR */
+	trdc_mbc_set_access(2, 6, 0, 49, true);
+	trdc_mbc_set_access(2, 6, 0, 50, true);
+	trdc_mbc_set_access(2, 6, 0, 51, true);
+	trdc_mbc_set_access(2, 6, 0, 52, true);
+	trdc_mbc_set_access(2, 6, 0, 53, true);
+	trdc_mbc_set_access(2, 6, 0, 54, true);
+
+	/* Set SAI0 for eDMA 0, NS */
+	trdc_mbc_set_access(2, 0, 1, 28, false);
+
+	/* Set SSRAM for eDMA0 access */
+	trdc_mbc_set_access(0, 0, 2, 0, false);
+	trdc_mbc_set_access(0, 0, 2, 1, false);
+	trdc_mbc_set_access(0, 0, 2, 2, false);
+	trdc_mbc_set_access(0, 0, 2, 3, false);
+	trdc_mbc_set_access(0, 0, 2, 4, false);
+	trdc_mbc_set_access(0, 0, 2, 5, false);
+	trdc_mbc_set_access(0, 0, 2, 6, false);
+	trdc_mbc_set_access(0, 0, 2, 7, false);
+
+	writel(0x800000a0, 0x28031840);
+
 	return 0;
 }
 
-void lpav_configure(void)
+void lpav_configure(bool lpav_to_m33)
 {
-	/* LPAV to APD */
-	setbits_le32(SIM_SEC_BASE_ADDR + 0x44, BIT(7));
+	if (!lpav_to_m33)
+		setbits_le32(SIM_SEC_BASE_ADDR + 0x44, BIT(7)); /* LPAV to APD */
 
 	/* PXP/GPU 2D/3D/DCNANO/MIPI_DSI/EPDC/HIFI4 to APD */
 	setbits_le32(SIM_SEC_BASE_ADDR + 0x4c, 0x7F);
@@ -678,6 +814,7 @@ void load_lposc_fuse(void)
 {
 	int ret;
 	u32 val = 0, val2 = 0, reg;
+
 	ret = fuse_read(25, 0, &val);
 	if (ret)
 		return; /* failed */
@@ -699,13 +836,57 @@ void set_lpav_qos(void)
 	writel(0xf, 0x2e447100);
 }
 
+void set_apd_gpiox_op_range(u32 port, u32 range)
+{
+	switch (port) {
+	case PTE:
+		/* update DGO4 operation range */
+		writel(range, SIM1_BASE_ADDR + 0x24);
+		/* set update bit */
+		setbits_le32(SIM1_BASE_ADDR + 0x8, BIT(4));
+		/* polling the ack */
+		while ((readl(SIM1_BASE_ADDR + 0x8) & BIT(12)) == 0)
+			;
+		/* clear update bit */
+		clrbits_le32(SIM1_BASE_ADDR + 0x8, BIT(4));
+		/* clear the ack by set 1 */
+		setbits_le32(SIM1_BASE_ADDR + 0x8, BIT(12));
+		break;
+	case PTF:
+		/* update DGO5 operation range */
+		writel(range, SIM1_BASE_ADDR + 0x28);
+		/* set update bit */
+		setbits_le32(SIM1_BASE_ADDR + 0x8, BIT(5));
+		/* polling the ack */
+		while ((readl(SIM1_BASE_ADDR + 0x8) & BIT(13)) == 0)
+			;
+		/* clear update bit */
+		clrbits_le32(SIM1_BASE_ADDR + 0x8, BIT(5));
+		/* clear the ack by set 1 */
+		setbits_le32(SIM1_BASE_ADDR + 0x8, BIT(13));
+		break;
+	default:
+		return;
+	};
+}
+
+void set_apd_gpiox_comp_cell(u32 port, bool enable) {
+	switch (port) {
+	case PTD:
+		/* Enable/disable PTD cell compensation */
+		if (enable)
+			setbits_le32(SIM1_BASE_ADDR + 0x48, BIT(15));
+		else
+			clrbits_le32(SIM1_BASE_ADDR + 0x48, BIT(15));
+		break;
+	default:
+		return;
+	};
+}
+
 int arch_cpu_init(void)
 {
 	if (IS_ENABLED(CONFIG_SPL_BUILD)) {
-		u32 val = 0;
-		int ret;
-		bool rdc_en = true; /* Default assume DBD_EN is set */
-
 		/* Enable System Reset Interrupt using WDOG_AD */
 		setbits_le32(CMC1_BASE_ADDR + 0x8C, BIT(13));
 		/* Clear AD_PERIPH Power switch domain out of reset interrupt flag */
@@ -722,82 +903,91 @@ int arch_cpu_init(void)
 		/* Disable wdog */
 		init_wdog();
 
-		/* Read DBD_EN fuse */
-		ret = fuse_read(8, 1, &val);
-		if (!ret)
-			rdc_en = !!(val & 0x4000);
-
-		if (get_boot_mode() == SINGLE_BOOT) {
-			if (rdc_en)
-				release_rdc(RDC_TRDC);
-
-			trdc_set_access();
-			lpav_configure();
-		}
+		if (get_boot_mode() == SINGLE_BOOT)
+			lpav_configure(false);
+		else
+			lpav_configure(true);
 
 		/* Release xrdc, then allow A35 to write SRAM2 */
-		if (rdc_en)
+		if (rdc_enabled_in_boot())
 			release_rdc(RDC_XRDC);
 
 		xrdc_mrc_region_set_access(2, CONFIG_SPL_TEXT_BASE, 0xE00);
 
 		clock_init_early();
+
+		spl_pass_boot_info();
 	} else {
+		int ret;
 		/* reconfigure core0 reset vector to ROM */
 		set_core0_reset_vector(0x1000);
+
+		if (is_m33_handshake_necessary()) {
+			/* Start handshake with M33 to ensure TRDC configuration completed */
+			ret = m33_image_handshake(3000);
+			if (!ret)
+				gd->arch.m33_handshake_done = true;
+			else /* Skip and go through to panic in checkcpu as console is ready then */
+				gd->arch.m33_handshake_done = false;
+		}
 	}
 
 	return 0;
 }
 
-int arch_cpu_init_dm(void)
+int checkcpu(void)
+{
+	if (is_m33_handshake_necessary()) {
+		if (!gd->arch.m33_handshake_done) {
+			puts("M33 Sync: Timeout, Boot Stop!\n");
+			hang();
+		} else {
+			puts("M33 Sync: OK\n");
+		}
+	}
+	return 0;
+}
+
+int imx8ulp_dm_post_init(void)
 {
 	struct udevice *devp;
-	int node, ret;
+	int ret;
+	u32 res;
+	struct ele_get_info_data *info = (struct ele_get_info_data *)SRAM0_BASE;
 
-	node = fdt_node_offset_by_compatible(gd->fdt_blob, -1, "fsl,imx8ulp-mu");
-
-	ret = uclass_get_device_by_of_offset(UCLASS_MISC, node, &devp);
+	ret = uclass_get_device_by_driver(UCLASS_MISC, DM_DRIVER_GET(imx8ulp_mu), &devp);
 	if (ret) {
 		printf("could not get S400 mu %d\n", ret);
 		return ret;
 	}
 
+	ret = ele_get_info(info, &res);
+	if (ret) {
+		printf("ele_get_info failed %d\n", ret);
+		/* fallback to A0.1 revision */
+		memset((void *)info, 0, sizeof(struct ele_get_info_data));
+		info->soc = 0xa000084d;
+	}
+
+	set_cpu_info(info);
+
 	return 0;
 }
+EVENT_SPY_SIMPLE(EVT_DM_POST_INIT_F, imx8ulp_dm_post_init);
+EVENT_SPY_SIMPLE(EVT_DM_POST_INIT_R, imx8ulp_dm_post_init);
 
 #if defined(CONFIG_ARCH_MISC_INIT)
 int arch_misc_init(void)
 {
-	struct udevice *dev;
-	int node, ret;
+	if (IS_ENABLED(CONFIG_FSL_CAAM)) {
+		struct udevice *dev;
+		int ret;
 
-	node = fdt_node_offset_by_compatible(gd->fdt_blob, -1, "fsl,sec-v4.0");
-
-	ret = uclass_get_device_by_of_offset(UCLASS_MISC, node, &dev);
-	if (ret) {
-		printf("could not get caam jr device %d\n", ret);
-		return ret;
+		ret = uclass_get_device_by_driver(UCLASS_MISC, DM_DRIVER_GET(caam_jr), &dev);
+		if (ret)
+			printf("Failed to initialize: %d\n", ret);
 	}
-	device_probe(dev);
 
-	return 0;
-}
-#endif
-
-#ifdef CONFIG_ARCH_EARLY_INIT_R
-int arch_early_init_r(void)
-{
-	struct udevice *devp;
-	int node, ret;
-
-	node = fdt_node_offset_by_compatible(gd->fdt_blob, -1, "fsl,imx8ulp-mu");
-
-	ret = uclass_get_device_by_of_offset(UCLASS_MISC, node, &devp);
-	if (ret) {
-		printf("could not get S400 mu %d\n", ret);
-		return ret;
-	}
 
 	return 0;
 }
@@ -853,47 +1043,219 @@ int (*card_emmc_is_boot_part_en)(void) = (void *)0x67cc;
 u32 spl_arch_boot_image_offset(u32 image_offset, u32 rom_bt_dev)
 {
 	/* Hard code for eMMC image_offset on 8ULP ROM, need fix by ROM, temp workaround */
-	if (((rom_bt_dev >> 16) & 0xff) == BT_DEV_TYPE_MMC && card_emmc_is_boot_part_en())
+	if (is_soc_rev(CHIP_REV_1_0) && ((rom_bt_dev >> 16) & 0xff) == BT_DEV_TYPE_MMC &&
+		card_emmc_is_boot_part_en())
 		image_offset = 0;
 
 	return image_offset;
 }
 
+static int delete_fdt_nodes(void *blob, const char *const nodes_path[], int size_array)
+{
+	int i = 0;
+	int rc;
+	int nodeoff;
+
+	for (i = 0; i < size_array; i++) {
+		nodeoff = fdt_path_offset(blob, nodes_path[i]);
+		if (nodeoff < 0)
+			continue; /* Not found, skip it */
+
+		debug("Found %s node\n", nodes_path[i]);
+
+		rc = fdt_del_node(blob, nodeoff);
+		if (rc < 0) {
+			printf("Unable to delete node %s, err=%s\n",
+			       nodes_path[i], fdt_strerror(rc));
+		} else {
+			printf("Delete node %s\n", nodes_path[i]);
+		}
+	}
+
+	return 0;
+}
+
+static int disable_gpu_nodes(void *blob)
+{
+	static const char * const nodes_path_npu[] = {
+		"/soc@0/gpu3d@2e000000",
+		"/soc@0/gpu2d@2e010000",
+		"/gpu"
+	};
+
+	return delete_fdt_nodes(blob, nodes_path_npu, ARRAY_SIZE(nodes_path_npu));
+}
+
+static int disable_pxp_epdc_nodes(void *blob)
+{
+	static const char * const nodes_path_npu[] = {
+		"/soc@0/bus@2d800000/epdc@2db30000",
+		"/soc@0/bus@2d800000/epxp@2db40000"
+	};
+
+	return delete_fdt_nodes(blob, nodes_path_npu, ARRAY_SIZE(nodes_path_npu));
+}
+
+static int disable_hifi_nodes(void *blob)
+{
+	static const char * const nodes_path_hifi[] = {
+		"/sof-sound-btsco",
+		"/soc@0/dsp@21170000"
+	};
+
+	return delete_fdt_nodes(blob, nodes_path_hifi, ARRAY_SIZE(nodes_path_hifi));
+}
+
+#define MAX_CORE_NUM 2
+static void disable_pmu_cpu_nodes(void *blob, u32 disabled_cores)
+{
+	static const char * const pmu_path[] = {
+		"/pmu"
+	};
+
+	int nodeoff, cnt, i, ret, j;
+	u32 irq_affinity[MAX_CORE_NUM];
+
+	for (i = 0; i < ARRAY_SIZE(pmu_path); i++) {
+		nodeoff = fdt_path_offset(blob, pmu_path[i]);
+		if (nodeoff < 0)
+			continue; /* Not found, skip it */
+
+		cnt = fdtdec_get_int_array_count(blob, nodeoff, "interrupt-affinity",
+						 irq_affinity, MAX_CORE_NUM);
+		if (cnt < 0)
+			continue;
+
+		if (cnt != MAX_CORE_NUM)
+			printf("Warning: %s, interrupt-affinity count %d\n", pmu_path[i], cnt);
+
+		for (j = 0; j < cnt; j++)
+			irq_affinity[j] = cpu_to_fdt32(irq_affinity[j]);
+
+		ret = fdt_setprop(blob, nodeoff, "interrupt-affinity", &irq_affinity,
+				 sizeof(u32) * (MAX_CORE_NUM - disabled_cores));
+		if (ret < 0) {
+			printf("Warning: %s, interrupt-affinity setprop failed %d\n",
+			       pmu_path[i], ret);
+			continue;
+		}
+
+		printf("Update node %s, interrupt-affinity prop\n", pmu_path[i]);
+	}
+}
+
+static int disable_cpu_nodes(void *blob, u32 disabled_cores)
+{
+	u32 i = 0;
+	int rc;
+	int nodeoff;
+	char nodes_path[32];
+
+	for (i = 1; i <= disabled_cores; i++) {
+
+		sprintf(nodes_path, "/cpus/cpu@%u", i);
+
+		nodeoff = fdt_path_offset(blob, nodes_path);
+		if (nodeoff < 0)
+			continue; /* Not found, skip it */
+
+		debug("Found %s node\n", nodes_path);
+
+		rc = fdt_del_node(blob, nodeoff);
+		if (rc < 0) {
+			printf("Unable to delete node %s, err=%s\n",
+			       nodes_path, fdt_strerror(rc));
+		} else {
+			printf("Delete node %s\n", nodes_path);
+		}
+	}
+
+	disable_pmu_cpu_nodes(blob, disabled_cores);
+	return 0;
+}
+
+
 int ft_system_setup(void *blob, struct bd_info *bd)
 {
+	u32 uid[4];
+	u32 res = 0;
+	int ret;
+	int nodeoff = fdt_path_offset(blob, "/soc");
+	/* Nibble 1st for major version
+	 * Nibble 0th for minor version.
+	 */
+	const u32 rev = 0x10;
+
+	if (nodeoff < 0) {
+		printf("Node to update the SoC serial number is not found.\n");
+		goto skip_upt;
+	}
+
+	ret = ele_read_common_fuse(1, uid, 4, &res);
+	if (ret) {
+		printf("ahab read fuse failed %d, 0x%x\n", ret, res);
+		memset(uid, 0x0, 4 * sizeof(u32));
+	}
+
+	ret = fdt_setprop_u32(blob, nodeoff, "soc-rev", rev);
+	if (ret)
+		printf("Error[0x%x] fdt_setprop revision-number.\n", ret);
+
+	ret = fdt_setprop_u64(blob, nodeoff, "soc-serial",
+				(u64)uid[3] << 32 | uid[0]);
+	if (ret)
+		printf("Error[0x%x] fdt_setprop serial-number.\n", ret);
+
+	if (IS_ENABLED(CONFIG_KASLR)) {
+		ret = do_generate_kaslr(blob);
+		if (ret)
+			goto skip_upt;
+	}
+
+skip_upt:
+	if (is_imx8ulps5() || is_imx8ulps3())
+		disable_cpu_nodes(blob, 1);
+
+	if (is_imx8ulpd5() || is_imx8ulps5() || is_imx8ulpd3() ||
+	    is_imx8ulps3() || is_imx8ulpsc())
+		disable_pxp_epdc_nodes(blob);
+
+	if (is_imx8ulpd3() || is_imx8ulps3())
+		disable_gpu_nodes(blob);
+
+	/* Check if HIFI4 PS is not allowed to power on */
+	if (is_imx8ulpsc() && is_psw_active_disabled(BIT(8)))
+		disable_hifi_nodes(blob);
+
 	return ft_add_optee_node(blob, bd);
 }
 
 enum env_location env_get_location(enum env_operation op, int prio)
 {
 	enum boot_device dev = get_boot_device();
-	enum env_location env_loc = ENVL_UNKNOWN;
 
 	if (prio)
-		return env_loc;
+		return ENVL_UNKNOWN;
 
 	switch (dev) {
-#ifdef CONFIG_ENV_IS_IN_SPI_FLASH
 	case QSPI_BOOT:
-		env_loc = ENVL_SPI_FLASH;
-		break;
-#endif
-#ifdef CONFIG_ENV_IS_IN_MMC
+		if (CONFIG_IS_ENABLED(ENV_IS_IN_SPI_FLASH))
+			return ENVL_SPI_FLASH;
+		return ENVL_NOWHERE;
 	case SD1_BOOT:
 	case SD2_BOOT:
 	case SD3_BOOT:
 	case MMC1_BOOT:
 	case MMC2_BOOT:
 	case MMC3_BOOT:
-		env_loc =  ENVL_MMC;
-		break;
-#endif
+		if (CONFIG_IS_ENABLED(ENV_IS_IN_MMC))
+			return ENVL_MMC;
+		else if (CONFIG_IS_ENABLED(ENV_IS_IN_EXT4))
+			return ENVL_EXT4;
+		else if (CONFIG_IS_ENABLED(ENV_IS_IN_FAT))
+			return ENVL_FAT;
+		return ENVL_NOWHERE;
 	default:
-#if defined(CONFIG_ENV_IS_NOWHERE)
-		env_loc = ENVL_NOWHERE;
-#endif
-		break;
+		return ENVL_NOWHERE;
 	}
-
-	return env_loc;
 }

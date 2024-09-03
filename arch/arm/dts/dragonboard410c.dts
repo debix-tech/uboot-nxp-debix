@@ -8,7 +8,7 @@
 /dts-v1/;
 
 #include "skeleton64.dtsi"
-#include <dt-bindings/pinctrl/pinctrl-snapdragon.h>
+#include <dt-bindings/gpio/gpio.h>
 
 / {
 	model = "Qualcomm Technologies, Inc. Dragonboard 410c";
@@ -59,14 +59,18 @@
 			reg = <0x60000 0x8000>;
 		};
 
-		pinctrl: qcom,tlmm@1000000 {
-			compatible = "qcom,tlmm-apq8016";
+		soc_gpios: pinctrl@1000000 {
+			compatible = "qcom,msm8916-pinctrl";
 			reg = <0x1000000 0x400000>;
+			gpio-controller;
+			gpio-count = <122>;
+			gpio-bank-name="soc";
+			#gpio-cells = <2>;
 
 			blsp1_uart: uart {
 				function = "blsp1_uart";
 				pins = "GPIO_4", "GPIO_5";
-				drive-strength = <DRIVE_STRENGTH_8MA>;
+				drive-strength = <8>;
 				bias-disable;
 			};
 		};
@@ -83,15 +87,6 @@
 			clock = <&clkc 4>;
 			pinctrl-names = "uart";
 			pinctrl-0 = <&blsp1_uart>;
-		};
-
-		soc_gpios: pinctrl@1000000 {
-			compatible = "qcom,apq8016-pinctrl";
-			reg = <0x1000000 0x300000>;
-			gpio-controller;
-			gpio-count = <122>;
-			gpio-bank-name="soc";
-			#gpio-cells = <1>;
 		};
 
 		ehci@78d9000 {
@@ -123,6 +118,7 @@
 			bus-width = <0x4>;
 			clock = <&clkc 1>;
 			clock-frequency = <200000000>;
+			cd-gpios = <&soc_gpios 38 GPIO_ACTIVE_LOW>;
 		};
 
 		wcnss {
@@ -135,9 +131,14 @@
 			};
 		};
 
-		spmi@200f000 {
+		spmi_bus: spmi@200f000 {
 			compatible = "qcom,spmi-pmic-arb";
-			reg = <0x200f800 0x200 0x2400000 0x400000 0x2c00000 0x400000>;
+			reg = <0x0200f000 0x001000>,
+			      <0x02400000 0x400000>,
+			      <0x02c00000 0x400000>,
+			      <0x03800000 0x200000>,
+			      <0x0200a000 0x002100>;
+			reg-names = "core", "chnls", "obsrvr", "intr", "cnfg";
 			#address-cells = <0x1>;
 			#size-cells = <0x1>;
 			pmic0: pm8916@0 {
@@ -146,20 +147,31 @@
 				#address-cells = <0x1>;
 				#size-cells = <0x1>;
 
-				pm8916_pon: pm8916_pon@800 {
-					compatible = "qcom,pm8916-pwrkey";
-					reg = <0x800 0x96>;
-					#gpio-cells = <2>;
-					gpio-controller;
+				pon@800 {
+					compatible = "qcom,pm8916-pon";
+					reg = <0x800 0x100>;
+					mode-bootloader = <0x2>;
+					mode-recovery = <0x1>;
+
+					pwrkey {
+						compatible = "qcom,pm8941-pwrkey";
+						debounce = <15625>;
+						bias-pull-up;
+					};
+
+					pm8916_resin: resin {
+						compatible = "qcom,pm8941-resin";
+						debounce = <15625>;
+						bias-pull-up;
+					};
 				};
 
 				pm8916_gpios: pm8916_gpios@c000 {
 					compatible = "qcom,pm8916-gpio";
 					reg = <0xc000 0x400>;
 					gpio-controller;
-					gpio-count = <4>;
+					gpio-ranges = <&pm8916_gpios 0 0 4>;
 					#gpio-cells = <2>;
-					gpio-bank-name="pmic";
 				};
 			};
 

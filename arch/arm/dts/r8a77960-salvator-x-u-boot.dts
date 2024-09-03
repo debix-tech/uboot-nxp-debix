@@ -8,9 +8,26 @@
 #include "r8a77960-salvator-x.dts"
 #include "r8a77960-u-boot.dtsi"
 
+/ {
+	sysinfo {
+		compatible = "renesas,rcar-sysinfo";
+		i2c-eeprom = <&sysinfo_eeprom>;
+		bootph-all;
+	};
+};
+
+&i2c_dvfs {
+	bootph-all;
+
+	sysinfo_eeprom: eeprom@50 {
+		bootph-all;
+		status = "okay";
+	};
+};
+
 &rpc {
 	reg = <0 0xee200000 0 0x100>, <0 0x08000000 0 0x04000000>;
-	status = "okay";
+	status = "disabled";
 };
 
 &sdhi0 {

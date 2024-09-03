@@ -20,25 +20,30 @@
 #endif
 #include <fsl_qbman.h>
 
-#define MAX_BPORTALS (CONFIG_SYS_BMAN_CINH_SIZE / CONFIG_SYS_BMAN_SP_CINH_SIZE)
-#define MAX_QPORTALS (CONFIG_SYS_QMAN_CINH_SIZE / CONFIG_SYS_QMAN_SP_CINH_SIZE)
+#ifdef CONFIG_RESV_RAM
+#include <asm/global_data.h>
+DECLARE_GLOBAL_DATA_PTR;
+#endif
+
+#define MAX_BPORTALS (CFG_SYS_BMAN_CINH_SIZE / CFG_SYS_BMAN_SP_CINH_SIZE)
+#define MAX_QPORTALS (CFG_SYS_QMAN_CINH_SIZE / CFG_SYS_QMAN_SP_CINH_SIZE)
 void setup_qbman_portals(void)
 {
-	void __iomem *bpaddr = (void *)CONFIG_SYS_BMAN_CINH_BASE +
-				CONFIG_SYS_BMAN_SWP_ISDR_REG;
-	void __iomem *qpaddr = (void *)CONFIG_SYS_QMAN_CINH_BASE +
-				CONFIG_SYS_QMAN_SWP_ISDR_REG;
-	struct ccsr_qman *qman = (void *)CONFIG_SYS_FSL_QMAN_ADDR;
+	void __iomem *bpaddr = (void *)CFG_SYS_BMAN_CINH_BASE +
+				CFG_SYS_BMAN_SWP_ISDR_REG;
+	void __iomem *qpaddr = (void *)CFG_SYS_QMAN_CINH_BASE +
+				CFG_SYS_QMAN_SWP_ISDR_REG;
+	struct ccsr_qman *qman = (void *)CFG_SYS_FSL_QMAN_ADDR;
 
 	/* Set the Qman initiator BAR to match the LAW (for DQRR stashing) */
 #ifdef CONFIG_PHYS_64BIT
-	out_be32(&qman->qcsp_bare, (u32)(CONFIG_SYS_QMAN_MEM_PHYS >> 32));
+	out_be32(&qman->qcsp_bare, (u32)(CFG_SYS_QMAN_MEM_PHYS >> 32));
 #endif
-	out_be32(&qman->qcsp_bar, (u32)CONFIG_SYS_QMAN_MEM_PHYS);
+	out_be32(&qman->qcsp_bar, (u32)CFG_SYS_QMAN_MEM_PHYS);
 #ifdef CONFIG_FSL_CORENET
 	int i;
 
-	for (i = 0; i < CONFIG_SYS_QMAN_NUM_PORTALS; i++) {
+	for (i = 0; i < CFG_SYS_QMAN_NUM_PORTALS; i++) {
 		u8 sdest = qp_info[i].sdest;
 		u16 fliodn = qp_info[i].fliodn;
 		u16 dliodn = qp_info[i].dliodn;
@@ -53,7 +58,7 @@ void setup_qbman_portals(void)
 #if defined(CONFIG_ARCH_LS1043A) || defined(CONFIG_ARCH_LS1046A)
 	int i;
 
-	for (i = 0; i < CONFIG_SYS_QMAN_NUM_PORTALS; i++) {
+	for (i = 0; i < CFG_SYS_QMAN_NUM_PORTALS; i++) {
 		u8 sdest = qp_info[i].sdest;
 		u16 ficid = qp_info[i].ficid;
 		u16 dicid = qp_info[i].dicid;
@@ -68,10 +73,10 @@ void setup_qbman_portals(void)
 #endif
 
 	/* Change default state of BMan ISDR portals to all 1s */
-	inhibit_portals(bpaddr, CONFIG_SYS_BMAN_NUM_PORTALS, MAX_BPORTALS,
-			CONFIG_SYS_BMAN_SP_CINH_SIZE);
-	inhibit_portals(qpaddr, CONFIG_SYS_QMAN_NUM_PORTALS, MAX_QPORTALS,
-			CONFIG_SYS_QMAN_SP_CINH_SIZE);
+	inhibit_portals(bpaddr, CFG_SYS_BMAN_NUM_PORTALS, MAX_BPORTALS,
+			CFG_SYS_BMAN_SP_CINH_SIZE);
+	inhibit_portals(qpaddr, CFG_SYS_QMAN_NUM_PORTALS, MAX_QPORTALS,
+			CFG_SYS_QMAN_SP_CINH_SIZE);
 }
 
 void inhibit_portals(void __iomem *addr, int max_portals,
@@ -106,7 +111,7 @@ static int fdt_qportal(void *blob, int off, int id, char *name,
 		       enum fsl_dpaa_dev dev, int create)
 {
 	int childoff, dev_off, ret = 0;
-	u32 dev_handle;
+	unsigned int dev_handle;
 #ifdef CONFIG_FSL_CORENET
 	int num;
 	u32 liodns[2];
@@ -142,11 +147,9 @@ static int fdt_qportal(void *blob, int off, int id, char *name,
 		if (childoff > 0) {
 			dev_handle = fdt_get_phandle(blob, dev_off);
 			if (dev_handle <= 0) {
-				dev_handle = fdt_alloc_phandle(blob);
-				ret = fdt_set_phandle(blob, dev_off,
-						      dev_handle);
-				if (ret < 0)
-					return ret;
+				dev_handle = fdt_create_phandle(blob, dev_off);
+				if (!dev_handle)
+					return -FDT_ERR_NOPHANDLES;
 			}
 
 			ret = fdt_setprop(blob, childoff, "dev-handle",
@@ -161,7 +164,7 @@ static int fdt_qportal(void *blob, int off, int id, char *name,
 			if (!strncmp(name, "pme", 3)) {
 				u32 pme_rev1, pme_rev2;
 				ccsr_pme_t *pme_regs =
-					(void *)CONFIG_SYS_FSL_CORENET_PME_ADDR;
+					(void *)CFG_SYS_FSL_CORENET_PME_ADDR;
 
 				pme_rev1 = in_be32(&pme_regs->pm_ip_rev_1);
 				pme_rev2 = in_be32(&pme_regs->pm_ip_rev_2);
@@ -187,12 +190,157 @@ static int fdt_qportal(void *blob, int off, int id, char *name,
 }
 #endif /* CONFIG_PPC */
 
+#ifdef CONFIG_RESV_RAM
+/**
+ * fdt_fixup_dynamic_reserved_mem(): Convert a dynamic reserved-memory node to static
+ *
+ * @fdt: Pointer to flat device tree blob
+ * @offset: Property offset within flat device tree blob
+ * @path: String holding the property path, used for printing
+ * @na: #address-cells of /reserved-memory node
+ * @ns: #size-cells of /reserved-memory node
+ *
+ * Takes add a reserved memory region under a reserved-memory node. Uses
+ * gd->arch.resv_ram to carve out memory and convert a dynamic allocation
+ * (using "size" and "alignment") to a static one (using "reg").
+ *
+ * Implementation inspired by fdtdec_add_reserved_memory(). While the existing
+ * API inserts a new node, we only need to insert the 'reg' property, if
+ * absent, in existing nodes.
+ *
+ * The gd->arch.resv_ram address is updated after alignment, so that successive
+ * calls do not result in overlapping memory regions.
+ */
+static void fdt_fixup_dynamic_reserved_mem(void *fdt, int offset, const char *path,
+					   int na, int ns)
+{
+	fdt32_t cells[4] = {}, *ptr = cells;
+	u64 base = gd->arch.resv_ram;
+	u64 size, alignment;
+	const fdt32_t *prop;
+	u32 upper, lower;
+	int err;
+
+	prop = fdt_getprop(fdt, offset, "reg", NULL);
+	if (prop) {
+		log_debug("node \"%s\" already contains \"reg\" property, skipping fixup\n",
+			  path);
+		return;
+	}
+
+	/* Read the size and alignment from the device tree */
+	prop = fdt_getprop(fdt, offset, "size", NULL);
+	if (!prop) {
+		log_warning("No \"size\" property for node \"%s\", aborting fixup\n",
+			    path);
+		return;
+	}
+
+	size = fdt_read_number(prop, na);
+
+	prop = fdt_getprop(fdt, offset, "alignment", NULL);
+	if (!prop) {
+		log_warning("No \"alignment\" property for node \"%s\", aborting fixup\n",
+			    path);
+		return;
+	}
+	alignment = fdt_read_number(prop, na);
+
+	/* Align the base address */
+	base = ALIGN_DOWN(base - size, alignment);
+	upper = upper_32_bits(base);
+	lower = lower_32_bits(base);
+
+	if (na > 1)
+		*ptr++ = cpu_to_fdt32(upper);
+
+	*ptr++ = cpu_to_fdt32(lower);
+
+	upper = upper_32_bits(size);
+	lower = lower_32_bits(size);
+
+	if (ns > 1)
+		*ptr++ = cpu_to_fdt32(upper);
+
+	*ptr++ = cpu_to_fdt32(lower);
+
+	err = fdt_setprop(fdt, offset, "reg", cells, (na + ns) * sizeof(*cells));
+	if (err < 0) {
+		log_warning("Failed to add reserved memory for node \"%s\": %d\n",
+			    path, err);
+		return;
+	}
+
+	/* We don't need these anymore */
+	fdt_delprop(fdt, offset, "size");
+	fdt_delprop(fdt, offset, "alignment");
+	fdt_delprop(fdt, offset, "alloc-ranges");
+
+	log_debug("Added reservation of size 0x%llx at address 0x%llx for node \"%s\"\n",
+		  size, base, path);
+
+	gd->arch.resv_ram = base;
+}
+
+static void fdt_fixup_qbman_reserved_mem_one(void *fdt, const char *alias,
+					     int na, int ns)
+{
+	const char *path = fdt_get_alias(fdt, alias);
+	int offset;
+
+	if (!path) {
+		log_debug("No \"%s\" alias found, skipping base address fixup\n",
+			  alias);
+		return;
+	}
+
+	offset = fdt_path_offset(fdt, path);
+	if (offset < 0) {
+		log_debug("Failed to find offset for path \"%s\"\n", path);
+		return;
+	}
+
+	fdt_fixup_dynamic_reserved_mem(fdt, offset, path, na, ns);
+}
+
+/* Reserve memory in RAM for the QBMan FBPR, FQD and PFDR private memory
+ * regions. Update the device tree with the corresponding addresses.
+ *
+ * The regions are accessed in Linux and can be configured in BAR registers
+ * only once per SoC reset. In order to guarantee the same memory regions
+ * are used by successive kernels without a reset (e.g. kexec), reserve the
+ * regions from the bootloader so they persist between kernels.
+ */
+void fdt_fixup_qbman_reserved_mem(void *fdt)
+{
+	int offset = fdt_path_offset(fdt, "/reserved-memory");
+	int na, ns;
+
+	if (offset < 0) {
+		log_warning("No \"/reserved-memory\" node, aborting QBMan fixup\n");
+		return;
+	}
+
+	na = fdt_address_cells(fdt, offset);
+	ns = fdt_size_cells(fdt, offset);
+
+	/* Reserve memory regions for each area. The calling order here
+	 * should be kept the same as their relative ordering within the
+	 * /reserved-memory node, if U-Boot should reserve the same addresses
+	 * as Linux. The gd->arch.resv_ram address is updated in each call.
+	 */
+	fdt_fixup_qbman_reserved_mem_one(fdt, "bman_fbpr", na, ns);
+	fdt_fixup_qbman_reserved_mem_one(fdt, "qman_fqd", na, ns);
+	fdt_fixup_qbman_reserved_mem_one(fdt, "qman_pfdr", na, ns);
+}
+#endif
+
 void fdt_fixup_qportals(void *blob)
 {
 	int off, err;
 	unsigned int maj, min;
 	unsigned int ip_cfg;
-	struct ccsr_qman *qman = (void *)CONFIG_SYS_FSL_QMAN_ADDR;
+	struct ccsr_qman *qman = (void *)CFG_SYS_FSL_QMAN_ADDR;
 	u32 rev_1 = in_be32(&qman->ip_rev_1);
 	u32 rev_2 = in_be32(&qman->ip_rev_2);
 	char compat[64];
@@ -210,8 +358,7 @@ void fdt_fixup_qportals(void *blob)
 			     maj, min, ip_cfg) + 1;
 	compat_len += sprintf(compat + compat_len, "fsl,qman-portal") + 1;
 
-	off = fdt_node_offset_by_compatible(blob, -1, "fsl,qman-portal");
-	while (off != -FDT_ERR_NOTFOUND) {
+	fdt_for_each_node_by_compatible(off, blob, -1, "fsl,qman-portal") {
 #if defined(CONFIG_PPC) || defined(CONFIG_ARCH_LS1043A) || \
 defined(CONFIG_ARCH_LS1046A)
 #ifdef CONFIG_FSL_CORENET
@@ -260,7 +407,7 @@ defined(CONFIG_ARCH_LS1046A)
 #endif
 
 #ifdef CONFIG_SYS_DPAA_FMAN
-		for (j = 0; j < CONFIG_SYS_NUM_FMAN; j++) {
+		for (j = 0; j < CFG_SYS_NUM_FMAN; j++) {
 			char name[] = "fman@0";
 
 			name[sizeof(name) - 2] = '0' + j;
@@ -297,9 +444,6 @@ err:
 			       fdt_strerror(err));
 			return;
 		}
-
-		off = fdt_node_offset_by_compatible(blob, off,
-						    "fsl,qman-portal");
 	}
 }
 
@@ -308,7 +452,7 @@ void fdt_fixup_bportals(void *blob)
 	int off, err;
 	unsigned int maj, min;
 	unsigned int ip_cfg;
-	struct ccsr_bman *bman = (void *)CONFIG_SYS_FSL_BMAN_ADDR;
+	struct ccsr_bman *bman = (void *)CFG_SYS_FSL_BMAN_ADDR;
 	u32 rev_1 = in_be32(&bman->ip_rev_1);
 	u32 rev_2 = in_be32(&bman->ip_rev_2);
 	char compat[64];

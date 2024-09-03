@@ -113,7 +113,7 @@ void sysreset_walk_halt(enum sysreset_t type)
 /**
  * reset_cpu() - calls sysreset_walk(SYSRESET_WARM)
  */
-void reset_cpu(ulong addr)
+void reset_cpu(void)
 {
 	sysreset_walk_halt(SYSRESET_WARM);
 }
@@ -122,10 +122,19 @@ void reset_cpu(ulong addr)
 #if IS_ENABLED(CONFIG_SYSRESET_CMD_RESET)
 int do_reset(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 {
+	enum sysreset_t reset_type = SYSRESET_COLD;
+
+	if (argc > 2)
+		return CMD_RET_USAGE;
+
+	if (argc == 2 && argv[1][0] == '-' && argv[1][1] == 'w') {
+		reset_type = SYSRESET_WARM;
+	}
+
 	printf("resetting ...\n");
 	mdelay(100);
 
-	sysreset_walk_halt(SYSRESET_COLD);
+	sysreset_walk_halt(reset_type);
 
 	return 0;
 }
@@ -149,23 +158,7 @@ int do_poweroff(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 }
 #endif
 
-static int sysreset_post_bind(struct udevice *dev)
-{
-#if defined(CONFIG_NEEDS_MANUAL_RELOC)
-	struct sysreset_ops *ops = sysreset_get_ops(dev);
-	static int reloc_done;
-
-	if (!reloc_done) {
-		if (ops->request)
-			ops->request += gd->reloc_off;
-		reloc_done++;
-	}
-#endif
-	return 0;
-}
-
 UCLASS_DRIVER(sysreset) = {
 	.id		= UCLASS_SYSRESET,
 	.name		= "sysreset",
-	.post_bind	= sysreset_post_bind,
 };

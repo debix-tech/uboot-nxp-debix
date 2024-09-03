@@ -10,7 +10,6 @@
  * the Makefile.
  */
 
-#include <common.h>
 #include <efi_loader.h>
 
 const efi_guid_t efi_guid_hii_config_routing_protocol
@@ -88,7 +87,7 @@ get_alt_config(const struct efi_hii_config_routing_protocol *this,
 	       const efi_string_t alt_cfg_id,
 	       efi_string_t *alt_cfg_resp)
 {
-	EFI_ENTRY("%p, \"%ls\", %pUl, \"%ls\", %p, \"%ls\", %p",
+	EFI_ENTRY("%p, \"%ls\", %pUs, \"%ls\", %p, \"%ls\", %p",
 		  this, config_resp, guid, name, device_path,
 		  alt_cfg_id, alt_cfg_resp);
 

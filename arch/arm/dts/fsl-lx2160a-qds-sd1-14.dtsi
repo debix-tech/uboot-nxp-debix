@@ -5,7 +5,7 @@
  * Some assumptions are made:
  *    * mezzanine card M8 (100G) is connected to IO SLOT 1 - DPMAC 1
  *
- * Copyright 2021 NXP
+ * Copyright 2021-2022 NXP
  *
  */
 

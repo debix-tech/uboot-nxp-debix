@@ -4,7 +4,9 @@ ifndef CONFIG_SPL_BUILD
 obj-y += sl28.o cmds.o
 endif
 
-obj-y += ddr.o
+obj-y += common.o ddr.o
+
+obj-$(CONFIG_ARMV8_PSCI) += psci.o
 
 ifdef CONFIG_SPL_BUILD
 obj-y += spl.o

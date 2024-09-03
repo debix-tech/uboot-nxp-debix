@@ -35,10 +35,6 @@
 
 DECLARE_GLOBAL_DATA_PTR;
 
-#define UART_PAD_CTRL  (PAD_CTL_PKE | PAD_CTL_PUE |		\
-	PAD_CTL_PUS_100K_UP | PAD_CTL_SPEED_MED |		\
-	PAD_CTL_DSE_40ohm   | PAD_CTL_SRE_FAST  | PAD_CTL_HYS)
-
 #define ENET_PAD_CTRL  (PAD_CTL_PUS_100K_UP | PAD_CTL_PUE |     \
 	PAD_CTL_SPEED_HIGH   |                                   \
 	PAD_CTL_DSE_48ohm   | PAD_CTL_SRE_FAST)
@@ -66,16 +62,6 @@ int dram_init(void)
 	gd->ram_size = imx_ddr_size();
 
 	return 0;
-}
-
-static iomux_v3_cfg_t const uart1_pads[] = {
-	MX6_PAD_GPIO1_IO04__UART1_TX | MUX_PAD_CTRL(UART_PAD_CTRL),
-	MX6_PAD_GPIO1_IO05__UART1_RX | MUX_PAD_CTRL(UART_PAD_CTRL),
-};
-
-static void setup_iomux_uart(void)
-{
-	imx_iomux_v3_setup_multiple_pads(uart1_pads, ARRAY_SIZE(uart1_pads));
 }
 
 static int setup_fec(void)
@@ -223,8 +209,6 @@ int board_ehci_hcd_init(int port)
 
 int board_early_init_f(void)
 {
-	setup_iomux_uart();
-
 	return 0;
 }
 
@@ -260,13 +244,13 @@ static iomux_v3_cfg_t const lcd_pads[] = {
 	MX6_PAD_LCD1_RESET__GPIO3_IO_27 | MUX_PAD_CTRL(NO_PAD_CTRL),
 };
 
-void do_enable_lvds(struct display_info_t const *dev)
+void setup_lvds(void)
 {
 	struct gpio_desc desc;
 	int ret;
 
-	enable_lcdif_clock(dev->bus, 1);
-	enable_lvds_bridge(dev->bus);
+	enable_lcdif_clock(LCDIF2_BASE_ADDR, 1);
+	enable_lvds_clock(LCDIF2_BASE_ADDR);
 
 	imx_iomux_v3_setup_multiple_pads(lvds_ctrl_pads,
 							ARRAY_SIZE(lvds_ctrl_pads));
@@ -295,12 +279,12 @@ void do_enable_lvds(struct display_info_t const *dev)
 	dm_gpio_set_dir_flags(&desc, GPIOD_IS_OUT | GPIOD_IS_OUT_ACTIVE);
 }
 
-void do_enable_parallel_lcd(struct display_info_t const *dev)
+void setup_lcd(void)
 {
 	struct gpio_desc desc;
 	int ret;
 
-	enable_lcdif_clock(dev->bus, 1);
+	enable_lcdif_clock(MX6SX_LCDIF1_BASE_ADDR, 1);
 
 	imx_iomux_v3_setup_multiple_pads(lcd_pads, ARRAY_SIZE(lcd_pads));
 
@@ -315,47 +299,6 @@ void do_enable_parallel_lcd(struct display_info_t const *dev)
 
 	dm_gpio_set_dir_flags(&desc, GPIOD_IS_OUT | GPIOD_IS_OUT_ACTIVE);
 }
-
-struct display_info_t const displays[] = {{
-	.bus = LCDIF2_BASE_ADDR,
-	.addr = 0,
-	.pixfmt = 18,
-	.detect = NULL,
-	.enable	= do_enable_lvds,
-	.mode	= {
-		.name			= "Hannstar-XGA",
-		.xres           = 1024,
-		.yres           = 768,
-		.pixclock       = 15385,
-		.left_margin    = 220,
-		.right_margin   = 40,
-		.upper_margin   = 21,
-		.lower_margin   = 7,
-		.hsync_len      = 60,
-		.vsync_len      = 10,
-		.sync           = 0,
-		.vmode          = FB_VMODE_NONINTERLACED
-} }, {
-	.bus = MX6SX_LCDIF1_BASE_ADDR,
-	.addr = 0,
-	.pixfmt = 18,
-	.detect = NULL,
-	.enable	= do_enable_parallel_lcd,
-	.mode	= {
-		.name			= "Boundary-LCD",
-		.xres           = 800,
-		.yres           = 480,
-		.pixclock       = 29850,
-		.left_margin    = 89,
-		.right_margin   = 164,
-		.upper_margin   = 23,
-		.lower_margin   = 10,
-		.hsync_len      = 10,
-		.vsync_len      = 10,
-		.sync           = 0,
-		.vmode          = FB_VMODE_NONINTERLACED
-} } };
-size_t display_count = ARRAY_SIZE(displays);
 #endif
 
 #ifdef CONFIG_FSL_QSPI
@@ -455,6 +398,10 @@ int board_init(void)
 	setup_fec();
 #endif
 
+#ifdef CONFIG_VIDEO_MXS
+	setup_lvds();
+	setup_lcd();
+#endif
 	return 0;
 }
 
@@ -494,4 +441,12 @@ int checkboard(void)
 	puts("Board: MX6SX SABRE AUTO\n");
 
 	return 0;
+}
+
+void board_quiesce_devices(void)
+{
+#if defined(CONFIG_VIDEO_MXS)
+	enable_lcdif_clock(MX6SX_LCDIF1_BASE_ADDR, 0);
+	enable_lcdif_clock(LCDIF2_BASE_ADDR, 0);
+#endif
 }

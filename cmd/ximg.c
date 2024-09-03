@@ -27,11 +27,6 @@
 #include <asm/cache.h>
 #include <asm/io.h>
 
-#ifndef CONFIG_SYS_XIMG_LEN
-/* use 8MByte as default max gunzip size */
-#define CONFIG_SYS_XIMG_LEN	0x800000
-#endif
-
 static int
 do_imgextract(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 {
@@ -42,7 +37,7 @@ do_imgextract(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 	int		part = 0;
 #if defined(CONFIG_LEGACY_IMAGE_FORMAT)
 	ulong		count;
-	image_header_t	*hdr = NULL;
+	struct legacy_img_hdr	*hdr = NULL;
 #endif
 #if defined(CONFIG_FIT)
 	const char	*uname = NULL;
@@ -59,16 +54,16 @@ do_imgextract(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 	verify = env_get_yesno("verify");
 
 	if (argc > 1) {
-		addr = simple_strtoul(argv[1], NULL, 16);
+		addr = hextoul(argv[1], NULL);
 	}
 	if (argc > 2) {
-		part = simple_strtoul(argv[2], NULL, 16);
+		part = hextoul(argv[2], NULL);
 #if defined(CONFIG_FIT)
 		uname = argv[2];
 #endif
 	}
 	if (argc > 3) {
-		dest = simple_strtoul(argv[3], NULL, 16);
+		dest = hextoul(argv[3], NULL);
 	}
 
 	switch (genimg_get_format((void *)addr)) {
@@ -78,7 +73,7 @@ do_imgextract(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 		printf("## Copying part %d from legacy image "
 			"at %08lx ...\n", part, addr);
 
-		hdr = (image_header_t *)addr;
+		hdr = (struct legacy_img_hdr *)addr;
 		if (!image_check_magic(hdr)) {
 			printf("Bad Magic Number\n");
 			return 1;
@@ -171,11 +166,8 @@ do_imgextract(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 			return 1;
 		}
 
-		if (fit_image_get_comp(fit_hdr, noffset, &comp)) {
-			puts("Could not find script subimage "
-				"compression type\n");
-			return 1;
-		}
+		if (fit_image_get_comp(fit_hdr, noffset, &comp))
+			comp = IH_COMP_NONE;
 
 		data = (ulong)fit_data;
 		len = (ulong)fit_len;
@@ -200,7 +192,7 @@ do_imgextract(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 
 				while (l > 0) {
 					tail = (l > CHUNKSZ) ? CHUNKSZ : l;
-					WATCHDOG_RESET();
+					schedule();
 					memmove(to, from, tail);
 					to += tail;
 					from += tail;
@@ -261,8 +253,7 @@ do_imgextract(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 	return 0;
 }
 
-#ifdef CONFIG_SYS_LONGHELP
-static char imgextract_help_text[] =
+U_BOOT_LONGHELP(imgextract,
 	"addr part [dest]\n"
 	"    - extract <part> from legacy image at <addr> and copy to <dest>"
 #if defined(CONFIG_FIT)
@@ -270,8 +261,7 @@ static char imgextract_help_text[] =
 	"addr uname [dest]\n"
 	"    - extract <uname> subimage from FIT image at <addr> and copy to <dest>"
 #endif
-	"";
-#endif
+	);
 
 U_BOOT_CMD(
 	imxtract, 4, 1, do_imgextract,

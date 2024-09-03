@@ -12,7 +12,8 @@
 /include/ "pcspkr.dtsi"
 /include/ "reset.dtsi"
 /include/ "rtc.dtsi"
-/include/ "tsc_timer.dtsi"
+
+#include "tsc_timer.dtsi"
 
 / {
 	model = "coreboot x86 payload";
@@ -30,21 +31,22 @@
 		stdout-path = "/serial";
 	};
 
-	tsc-timer {
-		clock-frequency = <1000000000>;
-	};
-
 	pci {
 		compatible = "pci-x86";
-		u-boot,dm-pre-reloc;
+		bootph-all;
 	};
 
 	serial: serial {
-		u-boot,dm-pre-reloc;
+		bootph-all;
 		compatible = "coreboot-serial";
 	};
 
 	coreboot-fb {
+		bootph-some-ram;
 		compatible = "coreboot-fb";
+	};
+
+	sysinfo {
+		compatible = "coreboot,sysinfo";
 	};
 };

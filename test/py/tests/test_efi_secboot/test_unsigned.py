@@ -35,12 +35,12 @@ class TestEfiUnsignedImage(object):
             assert 'Failed to set EFI variable' not in ''.join(output)
 
             output = u_boot_console.run_command_list([
-                'efidebug boot add 1 HELLO host 0:1 /helloworld.efi ""',
-                'efidebug boot next 1',
+                'efidebug boot add -b 1 HELLO host 0:1 /helloworld.efi -s ""',
+                'efidebug boot order 1',
                 'bootefi bootmgr'])
             assert '\'HELLO\' failed' in ''.join(output)
             output = u_boot_console.run_command_list([
-                'efidebug boot next 1',
+                'efidebug boot order 1',
                 'efidebug test bootmgr'])
             assert 'efi_start_image() returned: 26' in ''.join(output)
             assert 'Hello, world!' not in ''.join(output)
@@ -64,8 +64,8 @@ class TestEfiUnsignedImage(object):
             assert 'Failed to set EFI variable' not in ''.join(output)
 
             output = u_boot_console.run_command_list([
-                'efidebug boot add 1 HELLO host 0:1 /helloworld.efi ""',
-                'efidebug boot next 1',
+                'efidebug boot add -b 1 HELLO host 0:1 /helloworld.efi -s ""',
+                'efidebug boot order 1',
                 'bootefi bootmgr'])
             assert 'Hello, world!' in ''.join(output)
 
@@ -88,12 +88,12 @@ class TestEfiUnsignedImage(object):
             assert 'Failed to set EFI variable' not in ''.join(output)
 
             output = u_boot_console.run_command_list([
-                'efidebug boot add 1 HELLO host 0:1 /helloworld.efi ""',
-                'efidebug boot next 1',
+                'efidebug boot add -b 1 HELLO host 0:1 /helloworld.efi -s ""',
+                'efidebug boot order 1',
                 'bootefi bootmgr'])
             assert '\'HELLO\' failed' in ''.join(output)
             output = u_boot_console.run_command_list([
-                'efidebug boot next 1',
+                'efidebug boot order 1',
                 'efidebug test bootmgr'])
             assert 'efi_start_image() returned: 26' in ''.join(output)
             assert 'Hello, world!' not in ''.join(output)
@@ -106,12 +106,12 @@ class TestEfiUnsignedImage(object):
             assert 'Failed to set EFI variable' not in ''.join(output)
 
             output = u_boot_console.run_command_list([
-                'efidebug boot add 1 HELLO host 0:1 /helloworld.efi ""',
-                'efidebug boot next 1',
+                'efidebug boot add -b 1 HELLO host 0:1 /helloworld.efi -s ""',
+                'efidebug boot order 1',
                 'bootefi bootmgr'])
             assert '\'HELLO\' failed' in ''.join(output)
             output = u_boot_console.run_command_list([
-                'efidebug boot next 1',
+                'efidebug boot order 1',
                 'efidebug test bootmgr'])
             assert 'efi_start_image() returned: 26' in ''.join(output)
             assert 'Hello, world!' not in ''.join(output)

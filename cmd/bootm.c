@@ -31,7 +31,6 @@ static int image_info(unsigned long addr);
 #if defined(CONFIG_CMD_IMLS)
 #include <flash.h>
 #include <mtd/cfi_flash.h>
-extern flash_info_t flash_info[]; /* info for FLASH chips */
 #endif
 
 #if defined(CONFIG_CMD_IMLS) || defined(CONFIG_CMD_IMLS_NAND)
@@ -44,6 +43,9 @@ static int do_imls(struct cmd_tbl *cmdtp, int flag, int argc,
 static struct cmd_tbl cmd_bootm_sub[] = {
 	U_BOOT_CMD_MKENT(start, 0, 1, (void *)BOOTM_STATE_START, "", ""),
 	U_BOOT_CMD_MKENT(loados, 0, 1, (void *)BOOTM_STATE_LOADOS, "", ""),
+#ifdef CONFIG_CMD_BOOTM_PRE_LOAD
+	U_BOOT_CMD_MKENT(preload, 0, 1, (void *)BOOTM_STATE_PRE_LOAD, "", ""),
+#endif
 #ifdef CONFIG_SYS_BOOT_RAMDISK_HIGH
 	U_BOOT_CMD_MKENT(ramdisk, 0, 1, (void *)BOOTM_STATE_RAMDISK, "", ""),
 #endif
@@ -57,9 +59,24 @@ static struct cmd_tbl cmd_bootm_sub[] = {
 	U_BOOT_CMD_MKENT(go, 0, 1, (void *)BOOTM_STATE_OS_GO, "", ""),
 };
 
+#if defined(CONFIG_CMD_BOOTM_PRE_LOAD)
+static ulong bootm_get_addr(int argc, char *const argv[])
+{
+	ulong addr;
+
+	if (argc > 0)
+		addr = hextoul(argv[0], NULL);
+	else
+		addr = image_load_addr;
+
+	return addr;
+}
+#endif
+
 static int do_bootm_subcommand(struct cmd_tbl *cmdtp, int flag, int argc,
 			       char *const argv[])
 {
+	struct bootm_info bmi;
 	int ret = 0;
 	long state;
 	struct cmd_tbl *c;
@@ -70,7 +87,12 @@ static int do_bootm_subcommand(struct cmd_tbl *cmdtp, int flag, int argc,
 	if (c) {
 		state = (long)c->cmd;
 		if (state == BOOTM_STATE_START)
-			state |= BOOTM_STATE_FINDOS | BOOTM_STATE_FINDOTHER;
+			state |= BOOTM_STATE_PRE_LOAD | BOOTM_STATE_FINDOS |
+				 BOOTM_STATE_FINDOTHER;
+#if defined(CONFIG_CMD_BOOTM_PRE_LOAD)
+		if (state == BOOTM_STATE_PRE_LOAD)
+			state |= BOOTM_STATE_START;
+#endif
 	} else {
 		/* Unrecognized command */
 		return CMD_RET_USAGE;
@@ -82,9 +104,29 @@ static int do_bootm_subcommand(struct cmd_tbl *cmdtp, int flag, int argc,
 		return CMD_RET_USAGE;
 	}
 
-	ret = do_bootm_states(cmdtp, flag, argc, argv, state, &images, 0);
+	bootm_init(&bmi);
+	if (argc)
+		bmi.addr_img = argv[0];
+	if (argc > 1)
+		bmi.conf_ramdisk = argv[1];
+	if (argc > 2)
+		bmi.conf_fdt = argv[2];
+	bmi.cmd_name = "bootm";
+	bmi.boot_progress = false;
 
-	return ret;
+	/* set up argc and argv[] since some OSes use them */
+	bmi.argc = argc;
+	bmi.argv = argv;
+
+	ret = bootm_run_states(&bmi, state);
+
+#if defined(CONFIG_CMD_BOOTM_PRE_LOAD)
+	if (!ret && (state & BOOTM_STATE_PRE_LOAD))
+		env_set_hex("loadaddr_verified",
+			    bootm_get_addr(argc, argv) + image_load_offset);
+#endif
+
+	return ret ? CMD_RET_FAILURE : 0;
 }
 
 /*******************************************************************/
@@ -93,26 +135,15 @@ static int do_bootm_subcommand(struct cmd_tbl *cmdtp, int flag, int argc,
 
 int do_bootm(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 {
-#ifdef CONFIG_NEEDS_MANUAL_RELOC
-	static int relocated = 0;
-
-	if (!relocated) {
-		int i;
-
-		/* relocate names of sub-command table */
-		for (i = 0; i < ARRAY_SIZE(cmd_bootm_sub); i++)
-			cmd_bootm_sub[i].name += gd->reloc_off;
-
-		relocated = 1;
-	}
-#endif
+	struct bootm_info bmi;
+	int ret;
 
 	/* determine if we have a sub command */
 	argc--; argv++;
 	if (argc > 0) {
 		char *endp;
 
-		simple_strtoul(argv[0], &endp, 16);
+		hextoul(argv[0], &endp);
 		/* endp pointing to NULL means that argv[0] was just a
 		 * valid number, pass it along to the normal bootm processing
 		 *
@@ -131,7 +162,6 @@ int do_bootm(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 
 #ifdef CONFIG_IMX_OPTEE
 	ulong tee_addr = 0;
-	int ret;
 	ulong zi_start, zi_end;
 
 	tee_addr = env_get_ulong("tee_addr", 16, tee_addr);
@@ -143,7 +173,7 @@ int do_bootm(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 	switch (genimg_get_format((const void *)tee_addr)) {
 	case IMAGE_FORMAT_LEGACY:
 		if (authenticate_image(tee_addr,
-		       image_get_image_size((image_header_t *)tee_addr)) != 0) {
+		       image_get_image_size((struct legacy_img_hdr *)tee_addr)) != 0) {
 		       printf("Authenticate uImage Fail, Please check\n");
 		       return 1;
 		}
@@ -168,7 +198,7 @@ int do_bootm(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 #if defined(CONFIG_LEGACY_IMAGE_FORMAT)
 	case IMAGE_FORMAT_LEGACY:
 		if (authenticate_image(image_load_addr,
-			image_get_image_size((image_header_t *)image_load_addr)) != 0) {
+			image_get_image_size((struct legacy_img_hdr *)image_load_addr)) != 0) {
 			printf("Authenticate uImage Fail, Please check\n");
 			return 1;
 		}
@@ -186,24 +216,26 @@ int do_bootm(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 #endif
 #endif
 
-	return do_bootm_states(cmdtp, flag, argc, argv, BOOTM_STATE_START |
-		BOOTM_STATE_FINDOS | BOOTM_STATE_FINDOTHER |
-		BOOTM_STATE_LOADOS |
-#ifdef CONFIG_SYS_BOOT_RAMDISK_HIGH
-		BOOTM_STATE_RAMDISK |
-#endif
-#if defined(CONFIG_PPC) || defined(CONFIG_MIPS)
-		BOOTM_STATE_OS_CMDLINE |
-#endif
-		BOOTM_STATE_OS_PREP | BOOTM_STATE_OS_FAKE_GO |
-		BOOTM_STATE_OS_GO, &images, 1);
+	bootm_init(&bmi);
+	if (argc)
+		bmi.addr_img = argv[0];
+	if (argc > 1)
+		bmi.conf_ramdisk = argv[1];
+	if (argc > 2)
+		bmi.conf_fdt = argv[2];
+
+	/* set up argc and argv[] since some OSes use them */
+	bmi.argc = argc;
+	bmi.argv = argv;
+
+	ret = bootm_run(&bmi);
+
+	return ret ? CMD_RET_FAILURE : 0;
 }
 
 int bootm_maybe_autostart(struct cmd_tbl *cmdtp, const char *cmd)
 {
-	const char *ep = env_get("autostart");
-
-	if (ep && !strcmp(ep, "yes")) {
+	if (env_get_autostart()) {
 		char *local_args[2];
 		local_args[0] = (char *)cmd;
 		local_args[1] = NULL;
@@ -215,8 +247,7 @@ int bootm_maybe_autostart(struct cmd_tbl *cmdtp, const char *cmd)
 	return 0;
 }
 
-#ifdef CONFIG_SYS_LONGHELP
-static char bootm_help_text[] =
+U_BOOT_LONGHELP(bootm,
 	"[addr [arg ...]]\n    - boot application image stored in memory\n"
 	"\tpassing arguments 'arg ...'; when booting a Linux kernel,\n"
 	"\t'arg' can be the address of an initrd image\n"
@@ -239,6 +270,9 @@ static char bootm_help_text[] =
 	"must be\n"
 	"issued in the order below (it's ok to not issue all sub-commands):\n"
 	"\tstart [addr [arg ...]]\n"
+#if defined(CONFIG_CMD_BOOTM_PRE_LOAD)
+	"\tpreload [addr [arg ..]] - run only the preload stage\n"
+#endif
 	"\tloados  - load OS image\n"
 #if defined(CONFIG_SYS_BOOT_RAMDISK_HIGH)
 	"\tramdisk - relocate initrd, set env initrd_start/initrd_end\n"
@@ -252,8 +286,7 @@ static char bootm_help_text[] =
 #if defined(CONFIG_TRACE)
 	"\tfake    - OS specific fake start without go\n"
 #endif
-	"\tgo      - start OS";
-#endif
+	"\tgo      - start OS");
 
 U_BOOT_CMD(
 	bootm,	CONFIG_SYS_MAXARGS,	1,	do_bootm,
@@ -301,7 +334,7 @@ static int do_iminfo(struct cmd_tbl *cmdtp, int flag, int argc,
 	}
 
 	for (arg = 1; arg < argc; ++arg) {
-		addr = simple_strtoul(argv[arg], NULL, 16);
+		addr = hextoul(argv[arg], NULL);
 		if (image_info(addr) != 0)
 			rcode = 1;
 	}
@@ -401,7 +434,7 @@ static int do_imls_nor(void)
 	void *hdr;
 
 	for (i = 0, info = &flash_info[0];
-		i < CONFIG_SYS_MAX_FLASH_BANKS; ++i, ++info) {
+		i < CFI_FLASH_BANKS; ++i, ++info) {
 
 		if (info->flash_id == FLASH_UNKNOWN)
 			goto next_bank;
@@ -544,7 +577,7 @@ static int do_imls_nand(void)
 			continue;
 
 		for (off = 0; off < mtd->size; off += mtd->erasesize) {
-			const image_header_t *header;
+			const struct legacy_img_hdr *header;
 			int ret;
 
 			if (nand_block_isbad(mtd, off))
@@ -562,7 +595,7 @@ static int do_imls_nand(void)
 			switch (genimg_get_format(buffer)) {
 #if defined(CONFIG_LEGACY_IMAGE_FORMAT)
 			case IMAGE_FORMAT_LEGACY:
-				header = (const image_header_t *)buffer;
+				header = (const struct legacy_img_hdr *)buffer;
 
 				len = image_get_image_size(header);
 				nand_imls_legacyimage(mtd, nand_dev, off, len);

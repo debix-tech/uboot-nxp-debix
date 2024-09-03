@@ -1,7 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
- * Copyright 2018-2019 NXP
+ * Copyright 2018-2019, 2021 NXP
  *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #include <common.h>
@@ -20,14 +20,15 @@
 #include <asm/arch/sys_proto.h>
 #include <asm/mach-imx/boot_mode.h>
 #include <asm/arch/ddr.h>
+#include <asm/sections.h>
 
-#include <power/pmic.h>
-#include <power/bd71837.h>
-#include <power/pca9450.h>
 #include <dm/uclass.h>
 #include <dm/device.h>
 #include <dm/uclass-internal.h>
 #include <dm/device-internal.h>
+#include <power/pmic.h>
+#include <power/pca9450.h>
+#include <power/bd71837.h>
 #include <asm/mach-imx/gpio.h>
 #include <asm/mach-imx/mxc_i2c.h>
 #include <fsl_esdhc_imx.h>
@@ -117,7 +118,7 @@ int power_init_board(void)
 	struct udevice *dev;
 	int ret;
 
-	ret = pmic_get("pca9450@25", &dev);
+	ret = pmic_get("pmic@25", &dev);
 	if (ret == -ENODEV) {
 		puts("No pca9450@25\n");
 		return 0;
@@ -155,22 +156,14 @@ int power_init_board(void)
 	/* enable LDO4 to 1.2v */
 	pmic_reg_write(dev, PCA9450_LDO4CTRL, 0x44);
 
-	/* set WDOG_B_CFG to cold reset */
-	pmic_reg_write(dev, PCA9450_RESET_CTRL, 0xA1);
-
 	return 0;
 }
 #endif
 
 void spl_board_init(void)
 {
-	struct udevice *dev;
-	uclass_find_first_device(UCLASS_MISC, &dev);
+	arch_misc_init();
 
-	for (; dev; uclass_find_next_device(&dev)) {
-		if (device_probe(dev))
-			continue;
-	}
 	puts("Normal Boot\n");
 }
 
@@ -198,8 +191,6 @@ void board_init_f(ulong dummy)
 
 	timer_init();
 
-	preloader_console_init();
-
 	ret = spl_early_init();
 	if (ret) {
 		debug("spl_early_init() failed: %d\n", ret);
@@ -214,6 +205,8 @@ void board_init_f(ulong dummy)
 		hang();
 	}
 
+	preloader_console_init();
+
 	enable_tzc380();
 
 	power_init_board();
@@ -223,10 +216,10 @@ void board_init_f(ulong dummy)
 
 	board_init_r(NULL, 0);
 }
-#ifdef CONFIG_SPL_MMC_SUPPORT
 
+#ifdef CONFIG_SPL_MMC
 #define UBOOT_RAW_SECTOR_OFFSET 0x40
-unsigned long spl_mmc_get_uboot_raw_sector(struct mmc *mmc)
+unsigned long spl_mmc_get_uboot_raw_sector(struct mmc *mmc, unsigned long raw_sect)
 {
 	u32 boot_dev = spl_boot_device();
 	switch (boot_dev) {

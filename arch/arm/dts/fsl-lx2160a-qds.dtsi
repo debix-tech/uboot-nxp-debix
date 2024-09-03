@@ -2,7 +2,7 @@
 /*
  * NXP LX2160AQDS common device tree source
  *
- * Copyright 2018-2020 NXP
+ * Copyright 2018-2020, 2023 NXP
  *
  */
 
@@ -11,6 +11,7 @@
 / {
 	aliases {
 		spi0 = &fspi;
+		serial0 = &uart0;
 	};
 };
 
@@ -33,7 +34,7 @@
 	dflash0: n25q128a {
 		#address-cells = <1>;
 		#size-cells = <1>;
-		compatible = "spi-flash";
+		compatible = "jedec,spi-nor", "spi-flash";
 		spi-max-frequency = <3000000>;
 		spi-cpol;
 		spi-cpha;
@@ -42,7 +43,7 @@
 	dflash1: sst25wf040b {
 		#address-cells = <1>;
 		#size-cells = <1>;
-		compatible = "spi-flash";
+		compatible = "jedec,spi-nor", "spi-flash";
 		spi-max-frequency = <3000000>;
 		spi-cpol;
 		spi-cpha;
@@ -51,7 +52,7 @@
 	dflash2: en25s64 {
 		#address-cells = <1>;
 		#size-cells = <1>;
-		compatible = "spi-flash";
+		compatible = "jedec,spi-nor", "spi-flash";
 		spi-max-frequency = <3000000>;
 		spi-cpol;
 		spi-cpha;
@@ -66,7 +67,7 @@
 	dflash3: n25q128a {
 		#address-cells = <1>;
 		#size-cells = <1>;
-		compatible = "spi-flash";
+		compatible = "jedec,spi-nor", "spi-flash";
 		spi-max-frequency = <3000000>;
 		spi-cpol;
 		spi-cpha;
@@ -75,7 +76,7 @@
 	dflash4: sst25wf040b {
 		#address-cells = <1>;
 		#size-cells = <1>;
-		compatible = "spi-flash";
+		compatible = "jedec,spi-nor", "spi-flash";
 		spi-max-frequency = <3000000>;
 		spi-cpol;
 		spi-cpha;
@@ -84,7 +85,7 @@
 	dflash5: en25s64 {
 		#address-cells = <1>;
 		#size-cells = <1>;
-		compatible = "spi-flash";
+		compatible = "jedec,spi-nor", "spi-flash";
 		spi-max-frequency = <3000000>;
 		spi-cpol;
 		spi-cpha;
@@ -99,7 +100,7 @@
 	dflash6: n25q128a {
 		#address-cells = <1>;
 		#size-cells = <1>;
-		compatible = "spi-flash";
+		compatible = "jedec,spi-nor", "spi-flash";
 		spi-max-frequency = <3000000>;
 		spi-cpol;
 		spi-cpha;
@@ -108,7 +109,7 @@
 	dflash7: sst25wf040b {
 		#address-cells = <1>;
 		#size-cells = <1>;
-		compatible = "spi-flash";
+		compatible = "jedec,spi-nor", "spi-flash";
 		spi-max-frequency = <3000000>;
 		spi-cpol;
 		spi-cpha;
@@ -117,7 +118,7 @@
 	dflash8: en25s64 {
 		#address-cells = <1>;
 		#size-cells = <1>;
-		compatible = "spi-flash";
+		compatible = "jedec,spi-nor", "spi-flash";
 		spi-max-frequency = <3000000>;
 		spi-cpol;
 		spi-cpha;
@@ -143,7 +144,7 @@
 
 &i2c0 {
 	status = "okay";
-	u-boot,dm-pre-reloc;
+	bootph-all;
 
 	fpga@66 {
 		#address-cells = <1>;
@@ -250,7 +251,7 @@
 			reg = <0x3>;
 
 			rtc@51 {
-				compatible = "pcf2127-rtc";
+				compatible = "nxp,pcf2129";
 				reg = <0x51>;
 			};
 		};
@@ -284,5 +285,13 @@
 };
 
 &sata3 {
+	status = "okay";
+};
+
+&uart0 {
+	status = "okay";
+};
+
+&uart1 {
 	status = "okay";
 };

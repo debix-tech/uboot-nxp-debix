@@ -16,6 +16,7 @@
  */
 
 #include <config.h>
+#include <linux/compiler.h>
 #include <linux/types.h>
 #include <linux/string.h>
 #include <linux/ctype.h>
@@ -114,6 +115,8 @@ char * strncpy(char * dest,const char *src,size_t count)
  * NUL-terminated string that fits in the buffer (unless,
  * of course, the buffer size is zero). It does not pad
  * out the result like strncpy() does.
+ *
+ * Return: strlen(src)
  */
 size_t strlcpy(char *dest, const char *src, size_t size)
 {
@@ -176,22 +179,47 @@ char * strncat(char *dest, const char *src, size_t count)
 }
 #endif
 
+#ifndef __HAVE_ARCH_STRLCAT
+/**
+ * strlcat - Append a length-limited, %NUL-terminated string to another
+ * @dest: The string to be appended to
+ * @src: The string to append to it
+ * @size: The size of @dest
+ *
+ * Compatible with *BSD: the result is always a valid NUL-terminated string that
+ * fits in the buffer (unless, of course, the buffer size is zero). It does not
+ * write past @size like strncat() does.
+ *
+ * Return: min(strlen(dest), size) + strlen(src)
+ */
+size_t strlcat(char *dest, const char *src, size_t size)
+{
+	size_t len = strnlen(dest, size);
+
+	return len + strlcpy(dest + len, src, size - len);
+}
+#endif
+
 #ifndef __HAVE_ARCH_STRCMP
 /**
  * strcmp - Compare two strings
  * @cs: One string
  * @ct: Another string
  */
-int strcmp(const char * cs,const char * ct)
+int strcmp(const char *cs, const char *ct)
 {
-	register signed char __res;
+	int ret;
 
 	while (1) {
-		if ((__res = *cs - *ct++) != 0 || !*cs++)
+		unsigned char a = *cs++;
+		unsigned char b = *ct++;
+
+		ret = a - b;
+		if (ret || !b)
 			break;
 	}
 
-	return __res;
+	return ret;
 }
 #endif
 
@@ -202,17 +230,20 @@ int strcmp(const char * cs,const char * ct)
  * @ct: Another string
  * @count: The maximum number of bytes to compare
  */
-int strncmp(const char * cs,const char * ct,size_t count)
+int strncmp(const char *cs, const char *ct, size_t count)
 {
-	register signed char __res = 0;
+	int ret = 0;
 
-	while (count) {
-		if ((__res = *cs - *ct++) != 0 || !*cs++)
+	while (count--) {
+		unsigned char a = *cs++;
+		unsigned char b = *ct++;
+
+		ret = a - b;
+		if (ret || !b)
 			break;
-		count--;
 	}
 
-	return __res;
+	return ret;
 }
 #endif
 
@@ -490,7 +521,7 @@ char *strswab(const char *s)
  *
  * Do not use memset() to access IO space, use memset_io() instead.
  */
-void * memset(void * s,int c,size_t count)
+__used void * memset(void * s,int c,size_t count)
 {
 	unsigned long *sl = (unsigned long *) s;
 	char *s8;
@@ -529,7 +560,7 @@ void * memset(void * s,int c,size_t count)
  * You should not use this function to access IO space, use memcpy_toio()
  * or memcpy_fromio() instead.
  */
-void * memcpy(void *dest, const void *src, size_t count)
+__used void * memcpy(void *dest, const void *src, size_t count)
 {
 	unsigned long *dl = (unsigned long *)dest, *sl = (unsigned long *)src;
 	char *d8, *s8;
@@ -563,7 +594,7 @@ void * memcpy(void *dest, const void *src, size_t count)
  *
  * Unlike memcpy(), memmove() copes with overlapping areas.
  */
-void * memmove(void * dest,const void *src,size_t count)
+__used void * memmove(void * dest,const void *src,size_t count)
 {
 	char *tmp, *s;
 
@@ -599,7 +630,7 @@ void * memmove(void * dest,const void *src,size_t count)
  * @ct: Another area of memory
  * @count: The size of the area.
  */
-int memcmp(const void * cs,const void * ct,size_t count)
+__used int memcmp(const void * cs,const void * ct,size_t count)
 {
 	const unsigned char *su1, *su2;
 	int res = 0;
@@ -634,6 +665,19 @@ void * memscan(void * addr, int c, size_t size)
 	return (void *) p;
 }
 #endif
+
+char *memdup(const void *src, size_t len)
+{
+	char *p;
+
+	p = malloc(len);
+	if (!p)
+		return NULL;
+
+	memcpy(p, src, len);
+
+	return p;
+}
 
 #ifndef __HAVE_ARCH_STRSTR
 /**

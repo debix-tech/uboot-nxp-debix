@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright 2018-2021 NXP
+ * Copyright 2018-2022 NXP
  */
 
 #include <common.h>
 #include <clock_legacy.h>
+#include <display_options.h>
 #include <dm.h>
 #include <init.h>
 #include <asm/global_data.h>
@@ -12,6 +13,7 @@
 #include <i2c.h>
 #include <malloc.h>
 #include <errno.h>
+#include <event.h>
 #include <netdev.h>
 #include <fsl_ddr.h>
 #include <asm/io.h>
@@ -28,12 +30,15 @@
 #include <asm/arch/config.h>
 #include <asm/arch/fsl_serdes.h>
 #include <asm/arch/soc.h>
+#include "../common/i2c_mux.h"
+
 #include "../common/qixis.h"
 #include "../common/vid.h"
 #include <fsl_immap.h>
 #include <asm/arch-fsl-layerscape/fsl_icid.h>
 #include "lx2160a.h"
 #include "../common/qsfp_eeprom.h"
+#include "../common/i2c_mux.h"
 
 #ifdef CONFIG_EMC2305
 #include "../common/emc2305.h"
@@ -53,93 +58,17 @@
 
 DECLARE_GLOBAL_DATA_PTR;
 
-static struct pl01x_serial_plat serial0 = {
-#if CONFIG_CONS_INDEX == 0
-	.base = CONFIG_SYS_SERIAL0,
-#elif CONFIG_CONS_INDEX == 1
-	.base = CONFIG_SYS_SERIAL1,
-#else
-#error "Unsupported console index value."
-#endif
-	.type = TYPE_PL011,
-};
-
-U_BOOT_DRVINFO(nxp_serial0) = {
-	.name = "serial_pl01x",
-	.plat = &serial0,
-};
-
-static struct pl01x_serial_plat serial1 = {
-	.base = CONFIG_SYS_SERIAL1,
-	.type = TYPE_PL011,
-};
-
-U_BOOT_DRVINFO(nxp_serial1) = {
-	.name = "serial_pl01x",
-	.plat = &serial1,
-};
-
-int select_i2c_ch_pca9547(u8 ch)
-{
-	int ret;
-
-#if !CONFIG_IS_ENABLED(DM_I2C)
-	ret = i2c_write(I2C_MUX_PCA_ADDR_PRI, 0, 1, &ch, 1);
-#else
-	struct udevice *dev;
-
-	ret = i2c_get_chip_for_busnum(0, I2C_MUX_PCA_ADDR_PRI, 1, &dev);
-	if (!ret)
-		ret = dm_i2c_write(dev, 0, &ch, 1);
-#endif
-	if (ret) {
-		puts("PCA: failed to select proper channel\n");
-		return ret;
-	}
-
-	return 0;
-}
-
-int select_i2c_ch_pca9547_sec(u8 ch)
-{
-	int ret;
-
-#ifndef CONFIG_DM_I2C
-	ret = i2c_write(I2C_MUX_PCA_ADDR_SEC, 0, 1, &ch, 1);
-#else
-	struct udevice *dev;
-
-	ret = i2c_get_chip_for_busnum(0, I2C_MUX_PCA_ADDR_SEC, 1, &dev);
-	if (!ret)
-		ret = dm_i2c_write(dev, 0, &ch, 1);
-#endif
-	if (ret) {
-		puts("PCA: failed to select proper channel\n");
-		return ret;
-	}
-
-	return 0;
-}
-
-static void uart_get_clock(void)
-{
-	serial0.clock = get_serial_clock();
-	serial1.clock = get_serial_clock();
-}
-
 int board_early_init_f(void)
 {
-#ifdef CONFIG_SYS_I2C_EARLY_INIT
+#if defined(CONFIG_SYS_I2C_EARLY_INIT) && defined(CONFIG_SPL_BUILD)
 	i2c_early_init_f();
 #endif
-	/* get required clock for UART IP */
-	uart_get_clock();
 
 #ifdef CONFIG_EMC2305
-	select_i2c_ch_pca9547(I2C_MUX_CH_EMC2305);
+	select_i2c_ch_pca9547(I2C_MUX_CH_EMC2305, 0);
 	emc2305_init(I2C_EMC2305_ADDR);
 	set_fan_speed(I2C_EMC2305_PWM, I2C_EMC2305_ADDR);
-	select_i2c_ch_pca9547(I2C_MUX_CH_DEFAULT);
+	select_i2c_ch_pca9547(I2C_MUX_CH_DEFAULT, 0);
 #endif
 
 	fsl_lsch3_early_init_f();
@@ -163,8 +92,7 @@ int board_fix_fdt(void *fdt)
 	if (IS_SVR_REV(get_svr(), 1, 0))
 		return 0;
 
-	off = fdt_node_offset_by_compatible(fdt, -1, "fsl,lx2160a-pcie");
-	while (off != -FDT_ERR_NOTFOUND) {
+	fdt_for_each_node_by_compatible(off, fdt, -1, "fsl,lx2160a-pcie") {
 		fdt_setprop(fdt, off, "compatible", "fsl,ls-pcie",
 			    strlen("fsl,ls-pcie") + 1);
 
@@ -206,8 +134,6 @@ int board_fix_fdt(void *fdt)
 		}
 
 		fdt_setprop(fdt, off, "reg-names", reg_names, names_len);
-		off = fdt_node_offset_by_compatible(fdt, off,
-						    "fsl,lx2160a-pcie");
 	}
 
 	/* Fixup u-boot's DTS in case this is a revC board and
@@ -228,7 +154,7 @@ void esdhc_dspi_status_fixup(void *blob)
 	const char dspi1_path[] = "/soc/spi@2110000";
 	const char dspi2_path[] = "/soc/spi@2120000";
 
-	struct ccsr_gur __iomem *gur = (void *)(CONFIG_SYS_FSL_GUTS_ADDR);
+	struct ccsr_gur __iomem *gur = (void *)(CFG_SYS_FSL_GUTS_ADDR);
 	u32 sdhc1_base_pmux;
 	u32 sdhc2_base_pmux;
 	u32 iic5_pmux;
@@ -301,7 +227,7 @@ int esdhc_status_fixup(void *blob, const char *compat)
 #if defined(CONFIG_VID)
 int i2c_multiplexer_select_vid_channel(u8 channel)
 {
-	return select_i2c_ch_pca9547(channel);
+	return select_i2c_ch_pca9547(channel, 0);
 }
 
 int init_func_vid(void)
@@ -319,6 +245,7 @@ int init_func_vid(void)
 	return 0;
 }
 #endif
+EVENT_SPY_SIMPLE(EVT_MISC_INIT_F, init_func_vid);
 
 int checkboard(void)
 {
@@ -405,27 +332,6 @@ int checkboard(void)
 }
 
 #if defined(CONFIG_TARGET_LX2160AQDS) || defined(CONFIG_TARGET_LX2162AQDS)
-/*
- * implementation of CONFIG_ESDHC_DETECT_QUIRK Macro.
- */
-u8 qixis_esdhc_detect_quirk(void)
-{
-	/*
-	 * SDHC1 Card ID:
-	 * Specifies the type of card installed in the SDHC1 adapter slot.
-	 * 000= (reserved)
-	 * 001= eMMC V4.5 adapter is installed.
-	 * 010= SD/MMC 3.3V adapter is installed.
-	 * 011= eMMC V4.4 adapter is installed.
-	 * 100= eMMC V5.0 adapter is installed.
-	 * 101= MMC card/Legacy (3.3V) adapter is installed.
-	 * 110= SDCard V2/V3 adapter installed.
-	 * 111= no adapter is installed.
-	 */
-	return ((QIXIS_READ(sdhc1) & QIXIS_SDID_MASK) !=
-		 QIXIS_ESDHC_NO_ADAPTER);
-}
-
 static void esdhc_adapter_card_ident(void)
 {
 	u8 card_id, val;
@@ -454,7 +360,7 @@ static void esdhc_adapter_card_ident(void)
 int config_board_mux(void)
 {
 	u8 reg11, reg5, reg13;
-	struct ccsr_gur __iomem *gur = (void *)(CONFIG_SYS_FSL_GUTS_ADDR);
+	struct ccsr_gur __iomem *gur = (void *)(CFG_SYS_FSL_GUTS_ADDR);
 	u32 sdhc1_base_pmux;
 	u32 sdhc2_base_pmux;
 	u32 iic5_pmux;
@@ -590,7 +496,7 @@ int config_board_mux(void)
 }
 #endif
 
-#if CONFIG_IS_ENABLED(TARGET_LX2160ARDB)
+#if IS_ENABLED(CONFIG_TARGET_LX2160ARDB)
 u8 get_board_rev(void)
 {
 	u8 board_rev = (QIXIS_READ(arch) & 0xf) - 1 + 'A';
@@ -643,8 +549,8 @@ void qsfp_cortina_detect(void)
 	u8 qsfp_compat_code;
 
 	/* read qsfp+ eeprom & update environment for cs4223 init */
-	select_i2c_ch_pca9547(I2C_MUX_CH_SEC);
-	select_i2c_ch_pca9547_sec(I2C_MUX_CH_QSFP);
+	select_i2c_ch_pca9547(I2C_MUX_CH_SEC, 0);
+	select_i2c_ch_pca9547_sec(I2C_MUX_CH_QSFP, 0);
 	qsfp_compat_code = get_qsfp_compat0();
 	switch (qsfp_compat_code) {
 	case QSFP_COMPAT_CR4:
@@ -658,7 +564,7 @@ void qsfp_cortina_detect(void)
 		/* do nothing if detection fails or not supported*/
 		break;
 	}
-	select_i2c_ch_pca9547(I2C_MUX_CH_DEFAULT);
+	select_i2c_ch_pca9547(I2C_MUX_CH_DEFAULT, 0);
 }
 
 #endif /* CONFIG_QSFP_EEPROM & CONFIG_PHY_CORTINA */
@@ -668,11 +574,8 @@ int board_init(void)
 #if defined(CONFIG_FSL_MC_ENET) && defined(CONFIG_TARGET_LX2160ARDB)
 	u32 __iomem *irq_ccsr = (u32 __iomem *)ISC_BASE;
 #endif
-#ifdef CONFIG_ENV_IS_NOWHERE
-	gd->env_addr = (ulong)&default_environment[0];
-#endif
 
-	select_i2c_ch_pca9547(I2C_MUX_CH_DEFAULT);
+	select_i2c_ch_pca9547(I2C_MUX_CH_DEFAULT, 0);
 
 #if defined(CONFIG_FSL_MC_ENET) && defined(CONFIG_TARGET_LX2160ARDB)
 	/* invert AQR107 IRQ pins polarity */
@@ -683,7 +586,7 @@ int board_init(void)
 #endif
 #endif
 
-#if !defined(CONFIG_SYS_EARLY_PCI_INIT) && defined(CONFIG_DM_ETH)
+#if !defined(CONFIG_SYS_EARLY_PCI_INIT)
 	pci_init();
 #endif
 	return 0;
@@ -753,7 +656,6 @@ u16 soc_get_fuse_vid(int vid_index)
 #endif
 
 #ifdef CONFIG_FSL_MC_ENET
-extern int fdt_fixup_board_phy(void *fdt);
 
 void fdt_fixup_board_enet(void *fdt)
 {
@@ -773,12 +675,8 @@ void fdt_fixup_board_enet(void *fdt)
 	if (get_mc_boot_status() == 0 &&
 	    (is_lazy_dpl_addr_valid() || get_dpl_apply_status() == 0)) {
 		fdt_status_okay(fdt, offset);
-#ifndef CONFIG_DM_ETH
-		fdt_fixup_board_phy(fdt);
-#else
 		if (IS_ENABLED(CONFIG_TARGET_LX2160ARDB))
 			fdt_fixup_board_phy_revc(fdt);
-#endif
 	} else {
 		fdt_status_fail(fdt, offset);
 	}
@@ -790,7 +688,7 @@ void board_quiesce_devices(void)
 }
 #endif
 
-#if CONFIG_IS_ENABLED(TARGET_LX2160ARDB)
+#if IS_ENABLED(CONFIG_TARGET_LX2160ARDB)
 int fdt_fixup_add_thermal(void *blob, int mux_node, int channel, int reg)
 {
 	int err;
@@ -911,6 +809,14 @@ int ft_board_setup(void *blob, struct bd_info *bd)
 	u64 mc_memory_base = 0;
 	u64 mc_memory_size = 0;
 	u16 total_memory_banks;
+	int err;
+
+	err = fdt_increase_size(blob, 512);
+	if (err) {
+		printf("%s fdt_increase_size: err=%s\n", __func__,
+		       fdt_strerror(err));
+		return err;
+	}
 
 	ft_cpu_setup(blob, bd);
 
@@ -955,20 +861,21 @@ int ft_board_setup(void *blob, struct bd_info *bd)
 
 	fdt_fixup_memory_banks(blob, base, size, total_memory_banks);
 
-#ifdef CONFIG_USB
+#ifdef CONFIG_USB_HOST
 	fsl_fdt_fixup_dr_usb(blob, bd);
 #endif
 
 #ifdef CONFIG_FSL_MC_ENET
 	fdt_fsl_mc_fixup_iommu_map_entry(blob);
 	fdt_fixup_board_enet(blob);
+	fdt_reserve_mc_mem(blob, 0x4000);
 #endif
 	fdt_fixup_icid(blob);
 
-if (IS_ENABLED(CONFIG_TARGET_LX2160ARDB)) {
-	if (get_board_rev() >= 'C')
+#if IS_ENABLED(CONFIG_TARGET_LX2160ARDB)
+	if (get_board_rev() == 'C')
 		fdt_fixup_i2c_thermal_node(blob);
-	}
+#endif
 
 	return 0;
 }

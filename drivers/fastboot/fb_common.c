@@ -15,7 +15,7 @@
 #include <command.h>
 #include <env.h>
 #include <fastboot.h>
-#include <net/fastboot.h>
+#include <net.h>
 #include <image.h>
 
 /**
@@ -92,20 +92,33 @@ void fastboot_okay(const char *reason, char *response)
  */
 int __weak fastboot_set_reboot_flag(enum fastboot_reboot_reason reason)
 {
-#if CONFIG_IS_ENABLED(FASTBOOT_FLASH_MMC_DEV)
+	int ret;
 	static const char * const boot_cmds[] = {
 		[FASTBOOT_REBOOT_REASON_BOOTLOADER] = "bootonce-bootloader",
 		[FASTBOOT_REBOOT_REASON_FASTBOOTD] = "boot-fastboot",
 		[FASTBOOT_REBOOT_REASON_RECOVERY] = "boot-recovery"
 	};
+	const int mmc_dev = config_opt_enabled(CONFIG_FASTBOOT_FLASH_MMC,
+					       CONFIG_FASTBOOT_FLASH_MMC_DEV, -1);
+
+	if (!IS_ENABLED(CONFIG_FASTBOOT_FLASH_MMC))
+		return -EINVAL;
 
 	if (reason >= FASTBOOT_REBOOT_REASONS_COUNT)
 		return -EINVAL;
 
-	return bcb_write_reboot_reason(CONFIG_FASTBOOT_FLASH_MMC_DEV, "misc", boot_cmds[reason]);
-#else
-    return -EINVAL;
-#endif
+	ret = bcb_find_partition_and_load("mmc", mmc_dev, "misc");
+	if (ret)
+		goto out;
+
+	ret = bcb_set(BCB_FIELD_COMMAND, boot_cmds[reason]);
+	if (ret)
+		goto out;
+
+	ret = bcb_store();
+out:
+	bcb_reset();
+	return ret;
 }
 
 /**
@@ -135,7 +148,7 @@ void fastboot_boot(void)
 	s = env_get("fastboot_bootcmd");
 	if (s) {
 		run_command(s, CMD_FLAG_ENV);
-	} else {
+	} else if (IS_ENABLED(CONFIG_CMD_BOOTM)) {
 		static char boot_addr_start[20];
 #ifdef CONFIG_FSL_FASTBOOT
 		static char *const bootm_args[] = {
@@ -163,6 +176,40 @@ void fastboot_boot(void)
 		 * of fastbootcmd if that's what's being run
 		 */
 		do_reset(NULL, 0, 0, NULL);
+	}
+}
+
+/**
+ * fastboot_handle_boot() - Shared implementation of system reaction to
+ * fastboot commands
+ *
+ * Making desceisions about device boot state (stay in fastboot, reboot
+ * to bootloader, reboot to OS, etc).
+ */
+void fastboot_handle_boot(int command, bool success)
+{
+	if (!success)
+		return;
+
+	switch (command) {
+	case FASTBOOT_COMMAND_BOOT:
+		fastboot_boot();
+		net_set_state(NETLOOP_SUCCESS);
+		break;
+
+	case FASTBOOT_COMMAND_CONTINUE:
+		net_set_state(NETLOOP_SUCCESS);
+		break;
+
+	case FASTBOOT_COMMAND_REBOOT:
+	case FASTBOOT_COMMAND_REBOOT_BOOTLOADER:
+	case FASTBOOT_COMMAND_REBOOT_FASTBOOTD:
+	case FASTBOOT_COMMAND_REBOOT_RECOVERY:
+#ifdef CONFIG_ANDROID_RECOVERY
+	case FASTBOOT_COMMAND_RECOVERY_FASTBOOT:
+#endif
+		do_reset(NULL, 0, 0, NULL);
+		break;
 	}
 }
 

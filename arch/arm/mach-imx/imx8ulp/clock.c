@@ -101,7 +101,7 @@ void init_clk_ddr(void)
 	writel(0xc0000000, PCC5_LPDDR4_ADDR);
 
 	/* enable pll4 and ddrclk*/
-	cgc2_pll4_init();
+	cgc2_pll4_init(true);
 	cgc2_ddrclk_config(4, 1);
 
 	/* enable ddr pcc */
@@ -166,15 +166,11 @@ void clock_init_early(void)
 /* This will be invoked after pmic voltage setting */
 void clock_init_late(void)
 {
+	if (IS_ENABLED(CONFIG_IMX8ULP_ND_MODE))
+		cgc1_init_core_clk(MHZ(650));
+	else
+		cgc1_init_core_clk(get_cpu_speed_grade_hz());
 
-	if (IS_ENABLED(CONFIG_IMX8ULP_LD_MODE)) {
-		cgc1_init_core_clk(MHZ(500));
-	} else if (IS_ENABLED(CONFIG_IMX8ULP_ND_MODE)) {
-		cgc1_init_core_clk(MHZ(750));
-	} else {
-		cgc1_init_core_clk(MHZ(960));
-
-	}
 	/*
 	 * Audio use this frequency in kernel dts,
 	 * however nic use pll3 pfd0, we have to
@@ -183,37 +179,26 @@ void clock_init_late(void)
 	 */
 	cgc1_pll3_init(540672000);
 
-	if (IS_ENABLED(CONFIG_IMX8ULP_LD_MODE) || IS_ENABLED(CONFIG_IMX8ULP_ND_MODE)) {
-		pcc_clock_enable(4, SDHC0_PCC4_SLOT, false);
-		pcc_clock_sel(4, SDHC0_PCC4_SLOT, PLL3_PFD2_DIV2);
-		pcc_clock_enable(4, SDHC0_PCC4_SLOT, true);
-		pcc_reset_peripheral(4, SDHC0_PCC4_SLOT, false);
+	pcc_clock_enable(4, SDHC0_PCC4_SLOT, false);
+	pcc_clock_sel(4, SDHC0_PCC4_SLOT, PLL3_PFD3_DIV1); /* 389M for OD, 194M for LD/ND*/
+	pcc_clock_enable(4, SDHC0_PCC4_SLOT, true);
+	pcc_reset_peripheral(4, SDHC0_PCC4_SLOT, false);
 
-		pcc_clock_enable(4, SDHC1_PCC4_SLOT, false);
-		pcc_clock_sel(4, SDHC1_PCC4_SLOT, PLL3_PFD2_DIV2);
-		pcc_clock_enable(4, SDHC1_PCC4_SLOT, true);
-		pcc_reset_peripheral(4, SDHC1_PCC4_SLOT, false);
+	pcc_clock_enable(4, SDHC1_PCC4_SLOT, false);
+	if (IS_ENABLED(CONFIG_IMX8ULP_ND_MODE))
+		pcc_clock_sel(4, SDHC1_PCC4_SLOT, PLL3_PFD2_DIV1); /* 95M for ND */
+	else
+		pcc_clock_sel(4, SDHC1_PCC4_SLOT, PLL3_PFD3_DIV2); /* 194M for OD, */
+	pcc_clock_enable(4, SDHC1_PCC4_SLOT, true);
+	pcc_reset_peripheral(4, SDHC1_PCC4_SLOT, false);
 
-		pcc_clock_enable(4, SDHC2_PCC4_SLOT, false);
-		pcc_clock_sel(4, SDHC2_PCC4_SLOT, PLL3_PFD2_DIV2);
-		pcc_clock_enable(4, SDHC2_PCC4_SLOT, true);
-		pcc_reset_peripheral(4, SDHC2_PCC4_SLOT, false);
-	} else {
-		pcc_clock_enable(4, SDHC0_PCC4_SLOT, false);
-		pcc_clock_sel(4, SDHC0_PCC4_SLOT, PLL3_PFD1_DIV2);
-		pcc_clock_enable(4, SDHC0_PCC4_SLOT, true);
-		pcc_reset_peripheral(4, SDHC0_PCC4_SLOT, false);
-
-		pcc_clock_enable(4, SDHC1_PCC4_SLOT, false);
-		pcc_clock_sel(4, SDHC1_PCC4_SLOT, PLL3_PFD2_DIV1);
-		pcc_clock_enable(4, SDHC1_PCC4_SLOT, true);
-		pcc_reset_peripheral(4, SDHC1_PCC4_SLOT, false);
-
-		pcc_clock_enable(4, SDHC2_PCC4_SLOT, false);
-		pcc_clock_sel(4, SDHC2_PCC4_SLOT, PLL3_PFD2_DIV1);
-		pcc_clock_enable(4, SDHC2_PCC4_SLOT, true);
-		pcc_reset_peripheral(4, SDHC2_PCC4_SLOT, false);
-	}
+	pcc_clock_enable(4, SDHC2_PCC4_SLOT, false);
+	if (IS_ENABLED(CONFIG_IMX8ULP_ND_MODE))
+		pcc_clock_sel(4, SDHC2_PCC4_SLOT, PLL3_PFD2_DIV1); /* 95M for ND */
+	else
+		pcc_clock_sel(4, SDHC2_PCC4_SLOT, PLL3_PFD3_DIV2); /* 194M for OD */
+	pcc_clock_enable(4, SDHC2_PCC4_SLOT, true);
+	pcc_reset_peripheral(4, SDHC2_PCC4_SLOT, false);
 
 	/* enable MU0_MUB clock before access the register of MU0_MUB */
 	pcc_clock_enable(3, MU0_B_PCC3_SLOT, true);
@@ -280,9 +265,6 @@ u32 imx_get_i2cclk(u32 i2c_num)
 #if IS_ENABLED(CONFIG_SYS_I2C_IMX_I3C)
 int enable_i3c_clk(unsigned char enable, u32 i3c_num)
 {
-	if (i3c_num != 8)
-		return -EINVAL;
-
 	if (enable) {
 		pcc_clock_enable(3, I3C2_PCC3_SLOT, false);
 		pcc_clock_sel(3, I3C2_PCC3_SLOT, SOSC_DIV2);
@@ -296,9 +278,6 @@ int enable_i3c_clk(unsigned char enable, u32 i3c_num)
 
 u32 imx_get_i3cclk(u32 i3c_num)
 {
-	if (i3c_num != 8)
-		return 0;
-
 	return pcc_clock_get_rate(3, I3C2_PCC3_SLOT);
 }
 #endif
@@ -311,14 +290,10 @@ void enable_usboh3_clk(unsigned char enable)
 		pcc_reset_peripheral(4, USB0_PCC4_SLOT, false);
 		pcc_reset_peripheral(4, USBPHY_PCC4_SLOT, false);
 
-#ifdef CONFIG_USB_MAX_CONTROLLER_COUNT
-		if (CONFIG_USB_MAX_CONTROLLER_COUNT > 1) {
-			pcc_clock_enable(4, USB1_PCC4_SLOT, true);
-			pcc_clock_enable(4, USB1PHY_PCC4_SLOT, true);
-			pcc_reset_peripheral(4, USB1_PCC4_SLOT, false);
-			pcc_reset_peripheral(4, USB1PHY_PCC4_SLOT, false);
-		}
-#endif
+		pcc_clock_enable(4, USB1_PCC4_SLOT, true);
+		pcc_clock_enable(4, USB1PHY_PCC4_SLOT, true);
+		pcc_reset_peripheral(4, USB1_PCC4_SLOT, false);
+		pcc_reset_peripheral(4, USB1PHY_PCC4_SLOT, false);
 
 		pcc_clock_enable(4, USB_XBAR_PCC4_SLOT, true);
 	} else {
@@ -403,7 +378,7 @@ void enable_mipi_dsi_clk(unsigned char enable)
 	if (enable) {
 		pcc_clock_enable(5, DSI_PCC5_SLOT, false);
 		pcc_reset_peripheral(5, DSI_PCC5_SLOT, true);
-		pcc_clock_sel(5, DSI_PCC5_SLOT, PLL4_PFD3_DIV2);
+		pcc_clock_sel(5, DSI_PCC5_SLOT, PLL4_PFD1_DIV2);
 		pcc_clock_div_config(5, DSI_PCC5_SLOT, 0, 6);
 		pcc_clock_enable(5, DSI_PCC5_SLOT, true);
 		pcc_reset_peripheral(5, DSI_PCC5_SLOT, false);
@@ -430,10 +405,11 @@ void reset_lcdclk(void)
 	/* Disable clock and reset dcnano*/
 	pcc_clock_enable(5, DCNANO_PCC5_SLOT, false);
 	pcc_reset_peripheral(5, DCNANO_PCC5_SLOT, true);
-
 }
 
-void mxs_set_lcdclk(uint32_t base_addr, uint32_t freq_in_khz)
+/* PLL4 PFD0 max frequency */
+#define PLL4_PFD3_MAX_RATE 480000 /*khz*/
+void mxs_set_lcdclk(u32 base_addr, u32 freq_in_khz)
 {
 	u8 pcd, best_pcd = 0;
 	u32 frac, rate, parent_rate, pfd, div;
@@ -448,10 +424,12 @@ void mxs_set_lcdclk(uint32_t base_addr, uint32_t freq_in_khz)
 	debug("PLL4 rate %ukhz\n", pll4_rate);
 
 	for (pfd = 12; pfd <= 35; pfd++) {
-		parent_rate = pll4_rate;
-		parent_rate = parent_rate * 18 / pfd;
-
 		for (div = 1; div <= 64; div++) {
+			parent_rate = pll4_rate;
+			parent_rate = parent_rate * 18 / pfd;
+			if (parent_rate > PLL4_PFD3_MAX_RATE)
+				continue;
+
 			parent_rate = parent_rate / div;
 
 			for (pcd = 0; pcd < 8; pcd++) {
@@ -483,10 +461,10 @@ void mxs_set_lcdclk(uint32_t base_addr, uint32_t freq_in_khz)
 	debug("LCD target rate %ukhz, best rate %ukhz, frac %u, pcd %u, best_pfd %u, best_div %u\n",
 	      freq_in_khz, best, best_frac, best_pcd, best_pfd, best_div);
 
-	cgc2_pll4_pfd_config(PLL4_PFD0, best_pfd);
-	cgc2_pll4_pfddiv_config(PLL4_PFD0_DIV1, best_div - 1);
+	cgc2_pll4_pfd_config(PLL4_PFD3, best_pfd);
+	cgc2_pll4_pfddiv_config(PLL4_PFD3_DIV2, best_div - 1);
 
-	pcc_clock_sel(5, DCNANO_PCC5_SLOT, PLL4_PFD0_DIV1);
+	pcc_clock_sel(5, DCNANO_PCC5_SLOT, PLL4_PFD3_DIV2);
 	pcc_clock_div_config(5, DCNANO_PCC5_SLOT, best_frac, best_pcd + 1);
 	pcc_clock_enable(5, DCNANO_PCC5_SLOT, true);
 	pcc_reset_peripheral(5, DCNANO_PCC5_SLOT, false);

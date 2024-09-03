@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright 2017-2020 NXP
+ * Copyright 2017-2021 NXP
  */
 
 #include <common.h>
@@ -8,6 +8,7 @@
 #include <cpu.h>
 #include <cpu_func.h>
 #include <dm.h>
+#include <event.h>
 #include <init.h>
 #include <log.h>
 #include <asm/cache.h>
@@ -19,15 +20,15 @@
 #include <errno.h>
 #include <asm/arch/clock.h>
 #include <thermal.h>
-#include <asm/arch/sci/sci.h>
-#include <power-domain.h>
-#include <elf.h>
+#include <firmware/imx/sci/sci.h>
 #include <asm/arch/sys_proto.h>
 #include <asm/arch-imx/cpu.h>
 #include <asm/armv8/cpu.h>
 #include <asm/armv8/mmu.h>
 #include <asm/setup.h>
 #include <asm/mach-imx/boot_mode.h>
+#include <power-domain.h>
+#include <elf.h>
 #include <spl.h>
 #include <env.h>
 #include <asm/mach-imx/imx_vservice.h>
@@ -48,6 +49,45 @@ struct pass_over_info_t *get_pass_over_info(void)
 	return p;
 }
 
+static char *get_reset_cause(void)
+{
+	sc_pm_reset_reason_t reason;
+
+	if (sc_pm_reset_reason(-1, &reason) != SC_ERR_NONE)
+		return "Unknown reset";
+
+	switch (reason) {
+	case SC_PM_RESET_REASON_POR:
+		return "POR";
+	case SC_PM_RESET_REASON_JTAG:
+		return "JTAG reset ";
+	case SC_PM_RESET_REASON_SW:
+		return "Software reset";
+	case SC_PM_RESET_REASON_WDOG:
+		return "Watchdog reset";
+	case SC_PM_RESET_REASON_LOCKUP:
+		return "SCU lockup reset";
+	case SC_PM_RESET_REASON_SNVS:
+		return "SNVS reset";
+	case SC_PM_RESET_REASON_TEMP:
+		return "Temp panic reset";
+	case SC_PM_RESET_REASON_MSI:
+		return "MSI reset";
+	case SC_PM_RESET_REASON_UECC:
+		return "ECC reset";
+	case SC_PM_RESET_REASON_SCFW_WDOG:
+		return "SCFW watchdog reset";
+	case SC_PM_RESET_REASON_ROM_WDOG:
+		return "SCU ROM watchdog reset";
+	case SC_PM_RESET_REASON_SECO:
+		return "SECO reset";
+	case SC_PM_RESET_REASON_SCFW_FAULT:
+		return "SCFW fault reset";
+	default:
+		return "Unknown reset";
+	}
+}
+
 int arch_cpu_init(void)
 {
 #if defined(CONFIG_SPL_BUILD) && defined(CONFIG_SPL_RECOVER_DATA_SECTION)
@@ -59,7 +99,8 @@ int arch_cpu_init(void)
 
 static void power_off_all_usb(void);
 
-int arch_cpu_init_dm(void)
+#define ARM_SMMU_sCR0_CLIENTPD	(1 << 0)
+static int imx8_init_mu(void)
 {
 	struct udevice *devp;
 	int node, ret;
@@ -72,7 +113,7 @@ int arch_cpu_init_dm(void)
 		return ret;
 	}
 
-	if (IS_ENABLED(CONFIG_XEN))
+	if (gd->flags & GD_FLG_RELOC) /* Skip others for board_r */
 		return 0;
 
 	struct pass_over_info_t *pass_over;
@@ -89,34 +130,35 @@ int arch_cpu_init_dm(void)
 	}
 
 #if !defined(CONFIG_TARGET_IMX8QM_MEK_A72_ONLY) && !defined(CONFIG_TARGET_IMX8QM_MEK_A53_ONLY)
-	if (is_imx8qm()) {
-		ret = sc_pm_set_resource_power_mode(-1, SC_R_SMMU,
-						    SC_PM_PW_MODE_ON);
-		if (ret)
-			return ret;
-	}
+#ifdef CONFIG_IMX8QM
+	ret = sc_pm_set_resource_power_mode(-1, SC_R_SMMU,
+					    SC_PM_PW_MODE_ON);
+	if (ret)
+		return ret;
+	/* bypass system MMU translation for all clients */
+	writel(ARM_SMMU_sCR0_CLIENTPD, SMMU_BASE);
+#endif
 #endif
 
 	power_off_all_usb();
 
 	return 0;
 }
+EVENT_SPY_SIMPLE(EVT_DM_POST_INIT_F, imx8_init_mu);
+EVENT_SPY_SIMPLE(EVT_DM_POST_INIT_R, imx8_init_mu);
 
 #if defined(CONFIG_ARCH_MISC_INIT)
 int arch_misc_init(void)
 {
 #if !defined(CONFIG_ANDROID_SUPPORT) && !defined(CONFIG_ANDROID_AUTO_SUPPORT)
-	struct udevice *dev;
-	int node, ret;
+	if (IS_ENABLED(CONFIG_FSL_CAAM)) {
+		struct udevice *dev;
+		int ret;
 
-	node = fdt_node_offset_by_compatible(gd->fdt_blob, -1, "fsl,sec-v4.0");
-
-	ret = uclass_get_device_by_of_offset(UCLASS_MISC, node, &dev);
-	if (ret) {
-		printf("could not get caam jr device %d\n", ret);
-		return ret;
+		ret = uclass_get_device_by_driver(UCLASS_MISC, DM_DRIVER_GET(caam_jr), &dev);
+		if (ret)
+			printf("Failed to initialize caam_jr: %d\n", ret);
 	}
-	device_probe(dev);
 #endif
 
 	return 0;
@@ -132,7 +174,6 @@ int arch_auxiliary_core_up(u32 core_id, ulong boot_private_data)
 	sc_faddr_t tcml_addr;
 	u32 tcm_size = SZ_256K; /* TCML + TCMU */
 	ulong addr;
-
 
 	switch (core_id) {
 	case 0:
@@ -154,16 +195,16 @@ int arch_auxiliary_core_up(u32 core_id, ulong boot_private_data)
 
 	if (addr >= tcml_addr && addr <= tcml_addr + tcm_size) {
 		printf("Wrong image address 0x%lx, should not in TCML\n",
-			addr);
+		       addr);
 		return -EINVAL;
 	}
 
 	printf("Power on M4 and MU\n");
 
-	if (sc_pm_set_resource_power_mode(-1, core_rsrc, SC_PM_PW_MODE_ON) != SC_ERR_NONE)
+	if (sc_pm_set_resource_power_mode(-1, core_rsrc, SC_PM_PW_MODE_ON))
 		return -EIO;
 
-	if (sc_pm_set_resource_power_mode(-1, mu_rsrc, SC_PM_PW_MODE_ON) != SC_ERR_NONE)
+	if (sc_pm_set_resource_power_mode(-1, mu_rsrc, SC_PM_PW_MODE_ON))
 		return -EIO;
 
 	printf("Copy M4 image from 0x%lx to TCML 0x%lx\n", addr, (ulong)tcml_addr);
@@ -172,7 +213,7 @@ int arch_auxiliary_core_up(u32 core_id, ulong boot_private_data)
 		memcpy((void *)tcml_addr, (void *)addr, tcm_size);
 
 	printf("Start M4 %u\n", core_id);
-	if (sc_pm_cpu_start(-1, core_rsrc, true, tcml_addr) != SC_ERR_NONE)
+	if (sc_pm_cpu_start(-1, core_rsrc, true, tcml_addr))
 		return -EIO;
 
 	printf("bootaux complete\n");
@@ -209,24 +250,24 @@ int arch_auxiliary_core_up(u32 core_id, ulong boot_private_data)
 
 	if (addr >= aux_core_ram && addr <= aux_core_ram + size) {
 		printf("Wrong image address 0x%lx, should not in aux core ram\n",
-			addr);
+		       addr);
 		return -EINVAL;
 	}
 
 	printf("Power on aux core %d\n", core_id);
 
-	if (sc_pm_set_resource_power_mode(-1, core_rsrc, SC_PM_PW_MODE_ON) != SC_ERR_NONE)
+	if (sc_pm_set_resource_power_mode(-1, core_rsrc, SC_PM_PW_MODE_ON))
 		return -EIO;
 
 	if (mu_rsrc != SC_R_NONE) {
-		if (sc_pm_set_resource_power_mode(-1, mu_rsrc, SC_PM_PW_MODE_ON) != SC_ERR_NONE)
+		if (sc_pm_set_resource_power_mode(-1, mu_rsrc, SC_PM_PW_MODE_ON))
 			return -EIO;
 	}
 
 	if (core_id == 1) {
 		struct power_domain pd;
 
-		if (sc_pm_clock_enable(-1, core_rsrc, SC_PM_CLK_PER, true, false) != SC_ERR_NONE) {
+		if (sc_pm_clock_enable(-1, core_rsrc, SC_PM_CLK_PER, true, false)) {
 			printf("Error enable clock\n");
 			return -EIO;
 		}
@@ -259,7 +300,7 @@ int arch_auxiliary_core_up(u32 core_id, ulong boot_private_data)
 
 	printf("Start %s\n", core_id == 0 ? "M4" : "HIFI");
 
-	if (sc_pm_cpu_start(-1, core_rsrc, true, aux_core_ram) != SC_ERR_NONE)
+	if (sc_pm_cpu_start(-1, core_rsrc, true, aux_core_ram))
 		return -EIO;
 
 	printf("bootaux complete\n");
@@ -286,7 +327,7 @@ int arch_auxiliary_core_check_up(u32 core_id)
 		return 0;
 	}
 
-	if (sc_pm_get_resource_power_mode(-1, core_rsrc, &power_mode) != SC_ERR_NONE)
+	if (sc_pm_get_resource_power_mode(-1, core_rsrc, &power_mode))
 		return 0;
 
 	if (power_mode != SC_PM_PW_MODE_OFF)
@@ -337,6 +378,8 @@ int print_bootinfo(void)
 		break;
 	}
 
+	printf("Reset cause: %s\n", get_reset_cause());
+
 	return 0;
 }
 
@@ -351,10 +394,6 @@ enum boot_device get_boot_device(void)
 #elif defined(CONFIG_TARGET_IMX8QM_MEK_A53_ONLY)
 	return SD2_BOOT;
 #endif
-	/* Note we only support android in EMMC SDHC0 */
-	if (IS_ENABLED(CONFIG_XEN))
-		return MMC1_BOOT;
-
 	sc_misc_get_boot_dev(-1, &dev_rsrc);
 
 	switch (dev_rsrc) {
@@ -393,12 +432,12 @@ bool is_usb_boot(void)
 	return get_boot_device() == USB_BOOT;
 }
 
-#ifdef CONFIG_SERIAL_TAG
+#if defined(CONFIG_SERIAL_TAG) || defined(CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG)
 #define FUSE_UNIQUE_ID_WORD0 16
 #define FUSE_UNIQUE_ID_WORD1 17
 void get_board_serial(struct tag_serialnr *serialnr)
 {
-	sc_err_t err;
+	int err;
 	u32 val1 = 0, val2 = 0;
 	u32 word1, word2;
 
@@ -409,20 +448,20 @@ void get_board_serial(struct tag_serialnr *serialnr)
 	word2 = FUSE_UNIQUE_ID_WORD1;
 
 	err = sc_misc_otp_fuse_read(-1, word1, &val1);
-	if (err != SC_ERR_NONE) {
+	if (err) {
 		printf("%s fuse %d read error: %d\n", __func__, word1, err);
 		return;
 	}
 
 	err = sc_misc_otp_fuse_read(-1, word2, &val2);
-	if (err != SC_ERR_NONE) {
+	if (err) {
 		printf("%s fuse %d read error: %d\n", __func__, word2, err);
 		return;
 	}
 	serialnr->low = val1;
 	serialnr->high = val2;
 }
-#endif /*CONFIG_SERIAL_TAG*/
+#endif /*CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG*/
 
 __weak int board_mmc_get_env_dev(int devno)
 {
@@ -529,10 +568,6 @@ phys_size_t get_effective_memsize(void)
 
 
 	end1 = (sc_faddr_t)phys_sdram_1_start + phys_sdram_1_size;
-
-	if (IS_ENABLED(CONFIG_XEN))
-		return PHYS_SDRAM_1_SIZE;
-
 	for (mr = 0; mr < 64; mr++) {
 		err = get_owned_memreg(mr, &start, &end);
 		if (!err) {
@@ -543,8 +578,8 @@ phys_size_t get_effective_memsize(void)
 
 			/* Find the memory region runs the U-Boot */
 			if (start >= phys_sdram_1_start && start <= end1 &&
-			    (start <= CONFIG_SYS_TEXT_BASE &&
-			    end >= CONFIG_SYS_TEXT_BASE)) {
+			    (start <= CONFIG_TEXT_BASE &&
+			    end >= CONFIG_TEXT_BASE)) {
 				if ((end + 1) <=
 				    ((sc_faddr_t)phys_sdram_1_start +
 				    phys_sdram_1_size))
@@ -571,14 +606,6 @@ int dram_init(void)
 
 	end1 = (sc_faddr_t)phys_sdram_1_start + phys_sdram_1_size;
 	end2 = (sc_faddr_t)phys_sdram_2_start + phys_sdram_2_size;
-
-	if (IS_ENABLED(CONFIG_XEN)) {
-		gd->ram_size = PHYS_SDRAM_1_SIZE;
-		gd->ram_size += PHYS_SDRAM_2_SIZE;
-
-		return 0;
-	}
-
 	for (mr = 0; mr < 64; mr++) {
 		err = get_owned_memreg(mr, &start, &end);
 		if (!err) {
@@ -647,16 +674,6 @@ int dram_init_banksize(void)
 
 	end1 = (sc_faddr_t)phys_sdram_1_start + phys_sdram_1_size;
 	end2 = (sc_faddr_t)phys_sdram_2_start + phys_sdram_2_size;
-
-	if (IS_ENABLED(CONFIG_XEN)) {
-		gd->bd->bi_dram[0].start = PHYS_SDRAM_1;
-		gd->bd->bi_dram[0].size = PHYS_SDRAM_1_SIZE;
-		gd->bd->bi_dram[1].start = PHYS_SDRAM_2;
-		gd->bd->bi_dram[1].size = PHYS_SDRAM_2_SIZE;
-
-		return 0;
-	}
-
 	for (mr = 0; mr < 64 && i < CONFIG_NR_DRAM_BANKS; mr++) {
 		err = get_owned_memreg(mr, &start, &end);
 		if (!err) {
@@ -689,6 +706,19 @@ int dram_init_banksize(void)
 			}
 		}
 	}
+#ifdef CONFIG_VPU_SECURE_HEAP
+	// pass the seucre memory to linux
+	gd->bd->bi_dram[i].start = CONFIG_SECURE_HEAP_BASE;
+	gd->bd->bi_dram[i].size = CONFIG_SECURE_HEAP_SIZE;
+	dram_bank_sort(i);
+	i++;
+
+	gd->bd->bi_dram[i].start = CONFIG_VPU_BOOT_BASE;
+	gd->bd->bi_dram[i].size = CONFIG_VPU_BOOT_SIZE;
+	dram_bank_sort(i);
+	i++;
+#endif
+
 
 	/* If error, set to the default value */
 	if (!i) {
@@ -760,44 +790,10 @@ void enable_caches(void)
 	sc_faddr_t start, end;
 	int err, i;
 
-	if (IS_ENABLED(CONFIG_XEN)) {
-		imx8_mem_map[0].virt = 0x00000000UL;
-		imx8_mem_map[0].phys = 0x00000000UL;
-		imx8_mem_map[0].size = 0x39000000UL;
-		imx8_mem_map[0].attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRNE) |
-				 PTE_BLOCK_NON_SHARE | PTE_BLOCK_PXN | PTE_BLOCK_UXN;
-		imx8_mem_map[1].virt = 0x39000000UL;
-		imx8_mem_map[1].phys = 0x39000000UL;
-		imx8_mem_map[1].size = 0x01000000UL;
-		imx8_mem_map[1].attrs = (PTE_BLOCK_MEMTYPE(MT_NORMAL) | PTE_BLOCK_INNER_SHARE);
-
-		imx8_mem_map[2].virt = 0x40000000UL;
-		imx8_mem_map[2].phys = 0x40000000UL;
-		imx8_mem_map[2].size = 0x40000000UL;
-		imx8_mem_map[2].attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRNE) |
-				 PTE_BLOCK_NON_SHARE | PTE_BLOCK_PXN | PTE_BLOCK_UXN;
-
-		imx8_mem_map[3].virt = 0x80000000UL;
-		imx8_mem_map[3].phys = 0x80000000UL;
-		imx8_mem_map[3].size = 0x80000000UL;
-		imx8_mem_map[3].attrs = (PTE_BLOCK_MEMTYPE(MT_NORMAL) | PTE_BLOCK_INNER_SHARE);
-
-		imx8_mem_map[4].virt = 0x100000000UL;
-		imx8_mem_map[4].phys = 0x100000000UL;
-		imx8_mem_map[4].size = 0x100000000UL;
-		imx8_mem_map[4].attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRNE) |
-				 PTE_BLOCK_NON_SHARE | PTE_BLOCK_PXN | PTE_BLOCK_UXN;
-
-		icache_enable();
-		dcache_enable();
-
-		return;
-	}
-
 	/* Create map for registers access from 0x1c000000 to 0x80000000*/
 	imx8_mem_map[0].virt = 0x1c000000UL;
 	imx8_mem_map[0].phys = 0x1c000000UL;
-	imx8_mem_map[0].size = 0x64000000UL;
+	imx8_mem_map[0].size = 0x44000000UL;
 	imx8_mem_map[0].attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRNE) |
 			 PTE_BLOCK_NON_SHARE | PTE_BLOCK_PXN | PTE_BLOCK_UXN;
 
@@ -920,18 +916,25 @@ u32 get_cpu_rev(void)
 	u32 id = 0, rev = 0;
 	int ret;
 
+	/* returns ID - chip id [4:0], chip revision [9:5]*/
 	ret = sc_misc_get_control(-1, SC_R_SYSTEM, SC_C_ID, &id);
 	if (ret)
 		return 0;
 
+	/* Extract silicon version */
 	rev = (id >> 5)  & 0xf;
+	/* Extract chip ID and add dummy */
 	id = (id & 0x1f) + MXC_SOC_IMX8;  /* Dummy ID for chip */
 
-	/* 8DXL uses A1/A2, so generate dummy rev to differentiate with B/C */
-	if (id == MXC_CPU_IMX8DXL && rev != 0)
-		rev = 0x10 + rev;
+	/* 8DXL A1: use dummy rev to differentiate from B */
+	if (id == MXC_CPU_IMX8DXL && rev == CHIP_REV_B)
+		rev = CHIP_REV_A1;
+	/* 8DXL B0: detect as B instead of C */
+	else if (id == MXC_CPU_IMX8DXL && rev == CHIP_REV_C)
+		rev = CHIP_REV_B;
 
-	return (id << 12) | rev;
+	/* return Chip ID in [31:12] and silicon ver in [11:0]*/
+	return (id << 12) | (rev & 0xfff);
 }
 
 void board_boot_order(u32 *spl_boot_list)
@@ -1057,7 +1060,7 @@ struct udevice * board_imx_vservice_find_mu(struct udevice *dev)
 	}
 
 	err = sc_rm_get_resource_owner(-1, resource_id, &resource_part);
-	if (err != SC_ERR_NONE) {
+	if (err) {
 		printf("%s get resource [%d] owner error: %d\n", __func__, resource_id, err);
 		return NULL;
 	}
@@ -1066,7 +1069,7 @@ struct udevice * board_imx_vservice_find_mu(struct udevice *dev)
 
 	/* MU8 for communication between M4_0 and u-boot, MU9 for M4_1 and u-boot */
 	err = sc_rm_get_resource_owner(-1, SC_R_M4_0_PID0, &m4_parts[0]);
-	if (err != SC_ERR_NONE) {
+	if (err) {
 		printf("%s get resource [%d] owner error: %d\n", __func__, SC_R_M4_0_PID0, err);
 		return NULL;
 	}
@@ -1080,7 +1083,7 @@ struct udevice * board_imx_vservice_find_mu(struct udevice *dev)
 
 	if (is_imx8qm()) {
 		err = sc_rm_get_resource_owner(-1, SC_R_M4_1_PID0, &m4_parts[1]);
-		if (err != SC_ERR_NONE) {
+		if (err) {
 			printf("%s get resource [%d] owner error: %d\n", __func__, SC_R_M4_1_PID0, err);
 			return NULL;
 		}
@@ -1117,6 +1120,7 @@ void * board_imx_vservice_get_buffer(struct imx_vservice_channel *node, u32 size
 }
 #endif
 
+#ifdef CONFIG_SYS_I2C_IMX_VIRT_I2C
 /* imx8qxp i2c1 has lots of devices may used by both M4 and A core
 *   If A core partition does not own the resource, we will start
 *   virtual i2c driver. Otherwise use local i2c driver.
@@ -1136,6 +1140,7 @@ int board_imx_lpi2c_bind(struct udevice *dev)
 
 	return -ENODEV;
 }
+#endif
 
 #ifdef CONFIG_USB_PORT_AUTO
 static int usb_port_auto_check(void)
@@ -1144,6 +1149,7 @@ static int usb_port_auto_check(void)
 	u32 usb2_data;
 	struct power_domain pd;
 	struct power_domain phy_pd;
+	struct ehci_mx6_phy_data phy_data;
 
 	if (!power_domain_lookup_name("conn_usb0", &pd)) {
 		ret = power_domain_on(&pd);
@@ -1162,8 +1168,12 @@ static int usb_port_auto_check(void)
 			return -1;
 		}
 
+		phy_data.phy_addr = (void __iomem *)(ulong)USB_PHY0_BASE_ADDR;
+		phy_data.misc_addr = (void __iomem *)(ulong)(USB_BASE_ADDR + 0x200);
+		phy_data.anatop_addr = NULL;
+
 		enable_usboh3_clk(1);
-		usb2_data = ci_udc_check_bus_active(USB_BASE_ADDR, USB_PHY0_BASE_ADDR, 0);
+		usb2_data = ci_udc_check_bus_active(USB_BASE_ADDR, &phy_data, 0);
 
 		ret = power_domain_off(&phy_pd);
 		if (ret) {

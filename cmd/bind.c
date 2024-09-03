@@ -152,7 +152,7 @@ static int bind_by_node_path(const char *path, const char *drv_name)
 	}
 
 	ofnode = ofnode_path(path);
-	ret = lists_bind_fdt(parent, ofnode, &dev, false);
+	ret = lists_bind_fdt(parent, ofnode, &dev, drv, false);
 
 	if (!dev || ret) {
 		printf("Unable to bind. err:%d\n", ret);
@@ -218,13 +218,13 @@ static int do_bind_unbind(struct cmd_tbl *cmdtp, int flag, int argc,
 			return CMD_RET_USAGE;
 		ret = unbind_by_node_path(argv[1]);
 	} else if (!by_node && bind) {
-		int index = (argc > 2) ? simple_strtoul(argv[2], NULL, 10) : 0;
+		int index = (argc > 2) ? dectoul(argv[2], NULL) : 0;
 
 		if (argc != 4)
 			return CMD_RET_USAGE;
 		ret = bind_by_class_index(argv[1], index, argv[3]);
 	} else if (!by_node && !bind) {
-		int index = (argc > 2) ? simple_strtoul(argv[2], NULL, 10) : 0;
+		int index = (argc > 2) ? dectoul(argv[2], NULL) : 0;
 
 		if (argc == 3)
 			ret = unbind_by_class_index(argv[1], index);
@@ -246,6 +246,8 @@ U_BOOT_CMD(
 	"Bind a device to a driver",
 	"<node path> <driver>\n"
 	"bind <class> <index> <driver>\n"
+	"Use 'dm tree' to list all devices registered in the driver model,\n"
+	"their path, class, index and current driver.\n"
 );
 
 U_BOOT_CMD(
@@ -254,4 +256,6 @@ U_BOOT_CMD(
 	"<node path>\n"
 	"unbind <class> <index>\n"
 	"unbind <class> <index> <driver>\n"
+	"Use 'dm tree' to list all devices registered in the driver model,\n"
+	"their path, class, index and current driver.\n"
 );

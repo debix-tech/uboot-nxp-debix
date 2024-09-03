@@ -2,7 +2,7 @@
 /*
  * NXP lx2160a SOC common device tree source
  *
- * Copyright 2018-2020 NXP
+ * Copyright 2018-2021, 2023 NXP
  *
  */
 
@@ -25,6 +25,50 @@
 		#clock-cells = <0>;
 		clock-frequency = <100000000>;
 		clock-output-names = "sysclk";
+	};
+
+	soc {
+		compatible = "simple-bus";
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+		dma-ranges = <0x0 0x0 0x0 0x0 0x10000 0x00000000>;
+
+		uart0: serial@21c0000 {
+			compatible = "arm,sbsa-uart","arm,pl011";
+			reg = <0x0 0x21c0000 0x0 0x1000>;
+			interrupts = <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>;
+			current-speed = <115200>;
+			status = "disabled";
+			bootph-all;
+		};
+
+		uart1: serial@21d0000 {
+			compatible = "arm,sbsa-uart","arm,pl011";
+			reg = <0x0 0x21d0000 0x0 0x1000>;
+			interrupts = <GIC_SPI 33 IRQ_TYPE_LEVEL_HIGH>;
+			current-speed = <115200>;
+			status = "disabled";
+			bootph-all;
+		};
+
+		uart2: serial@21e0000 {
+			compatible = "arm,sbsa-uart","arm,pl011";
+			reg = <0x0 0x21e0000 0x0 0x1000>;
+			interrupts = <GIC_SPI 72 IRQ_TYPE_LEVEL_HIGH>;
+			current-speed = <115200>;
+			status = "disabled";
+			bootph-all;
+		};
+
+		uart3: serial@21f0000 {
+			compatible = "arm,sbsa-uart","arm,pl011";
+			reg = <0x0 0x21f0000 0x0 0x1000>;
+			interrupts = <GIC_SPI 73 IRQ_TYPE_LEVEL_HIGH>;
+			current-speed = <115200>;
+			status = "disabled";
+			bootph-all;
+		};
 	};
 
 	crypto: crypto@8000000 {
@@ -80,12 +124,6 @@
 		#interrupt-cells = <3>;
 		interrupt-controller;
 		interrupts = <1 9 0x4>;
-	};
-
-	gic_lpi_base: syscon@0x80000000 {
-		compatible = "gic-lpi-base";
-		reg = <0x0 0x80000000 0x0 0x200000>;
-		max-gic-redistributors = <16>;
 	};
 
 	timer {
@@ -183,41 +221,13 @@
 		status = "disabled";
 	};
 
-	uart0: serial@21c0000 {
-		compatible = "arm,pl011";
-		reg = <0x0 0x21c0000 0x0 0x1000>;
-		clocks = <&clockgen 4 0>;
-		status = "disabled";
-	};
-
-	uart1: serial@21d0000 {
-		compatible = "arm,pl011";
-		reg = <0x0 0x21d0000 0x0 0x1000>;
-		clocks = <&clockgen 4 0>;
-		status = "disabled";
-	};
-
-	uart2: serial@21e0000 {
-		compatible = "arm,pl011";
-		reg = <0x0 0x21e0000 0x0 0x1000>;
-		clocks = <&clockgen 4 0>;
-		status = "disabled";
-	};
-
-	uart3: serial@21f0000 {
-		compatible = "arm,pl011";
-		reg = <0x0 0x21f0000 0x0 0x1000>;
-		clocks = <&clockgen 4 0>;
-		status = "disabled";
-	};
-
 	dspi0: dspi@2100000 {
 		compatible = "fsl,vf610-dspi";
 		#address-cells = <1>;
 		#size-cells = <0>;
 		reg = <0x0 0x2100000 0x0 0x10000>;
 		interrupts = <0 26 0x4>; /* Level high type */
-		num-cs = <6>;
+		spi-num-chipselects = <6>;
 	};
 
 	dspi1: dspi@2110000 {
@@ -226,7 +236,7 @@
 		#size-cells = <0>;
 		reg = <0x0 0x2110000 0x0 0x10000>;
 		interrupts = <0 26 0x4>; /* Level high type */
-		num-cs = <6>;
+		spi-num-chipselects = <6>;
 	};
 
 	dspi2: dspi@2120000 {
@@ -235,7 +245,7 @@
 		#size-cells = <0>;
 		reg = <0x0 0x2120000 0x0 0x10000>;
 		interrupts = <0 241 0x4>; /* Level high type */
-		num-cs = <6>;
+		spi-num-chipselects = <6>;
 	};
 
 	gpio0: gpio@2300000 {

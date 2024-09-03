@@ -9,58 +9,74 @@
 #include <console.h>
 #include <test/suites.h>
 #include <test/test.h>
+#include <test/ut.h>
 
 static int do_ut_all(struct cmd_tbl *cmdtp, int flag, int argc,
 		     char *const argv[]);
+
+static int do_ut_info(struct cmd_tbl *cmdtp, int flag, int argc,
+		      char *const argv[]);
 
 int cmd_ut_category(const char *name, const char *prefix,
 		    struct unit_test *tests, int n_ents,
 		    int argc, char *const argv[])
 {
-	struct unit_test_state uts = { .fail_count = 0 };
-	struct unit_test *test;
-	int prefix_len = prefix ? strlen(prefix) : 0;
+	const char *test_insert = NULL;
+	int runs_per_text = 1;
+	bool force_run = false;
+	int ret;
 
-	if (argc == 1)
-		printf("Running %d %s tests\n", n_ents, name);
+	while (argc > 1 && *argv[1] == '-') {
+		const char *str = argv[1];
 
-	for (test = tests; test < tests + n_ents; test++) {
-		const char *test_name = test->name;
-
-		/* Remove the prefix */
-		if (prefix && !strncmp(test_name, prefix, prefix_len))
-			test_name += prefix_len;
-
-		if (argc > 1 && strcmp(argv[1], test_name))
-			continue;
-		printf("Test: %s\n", test->name);
-
-		if (test->flags & UT_TESTF_CONSOLE_REC) {
-			int ret = console_record_reset_enable();
-
-			if (ret) {
-				printf("Skipping: Console recording disabled\n");
-				continue;
-			}
+		switch (str[1]) {
+		case 'r':
+			runs_per_text = dectoul(str + 2, NULL);
+			break;
+		case 'f':
+			force_run = true;
+			break;
+		case 'I':
+			test_insert = str + 2;
+			break;
 		}
-
-		uts.start = mallinfo();
-
-		test->func(&uts);
+		argv++;
+		argc--;
 	}
 
-	printf("Failures: %d\n", uts.fail_count);
+	ret = ut_run_list(name, prefix, tests, n_ents,
+			  cmd_arg1(argc, argv), runs_per_text, force_run,
+			  test_insert);
 
-	return uts.fail_count ? CMD_RET_FAILURE : 0;
+	return ret ? CMD_RET_FAILURE : 0;
 }
 
 static struct cmd_tbl cmd_ut_sub[] = {
 	U_BOOT_CMD_MKENT(all, CONFIG_SYS_MAXARGS, 1, do_ut_all, "", ""),
+	U_BOOT_CMD_MKENT(info, 1, 1, do_ut_info, "", ""),
+#ifdef CONFIG_CMD_BDI
+	U_BOOT_CMD_MKENT(bdinfo, CONFIG_SYS_MAXARGS, 1, do_ut_bdinfo, "", ""),
+#endif
+#ifdef CONFIG_UT_BOOTSTD
+	U_BOOT_CMD_MKENT(bootstd, CONFIG_SYS_MAXARGS, 1, do_ut_bootstd,
+			 "", ""),
+#endif
+#ifdef CONFIG_CMDLINE
+	U_BOOT_CMD_MKENT(cmd, CONFIG_SYS_MAXARGS, 1, do_ut_cmd, "", ""),
+#endif
+	U_BOOT_CMD_MKENT(common, CONFIG_SYS_MAXARGS, 1, do_ut_common, "", ""),
 #if defined(CONFIG_UT_DM)
 	U_BOOT_CMD_MKENT(dm, CONFIG_SYS_MAXARGS, 1, do_ut_dm, "", ""),
 #endif
 #if defined(CONFIG_UT_ENV)
 	U_BOOT_CMD_MKENT(env, CONFIG_SYS_MAXARGS, 1, do_ut_env, "", ""),
+#endif
+	U_BOOT_CMD_MKENT(exit, CONFIG_SYS_MAXARGS, 1, do_ut_exit, "", ""),
+#ifdef CONFIG_CMD_FDT
+	U_BOOT_CMD_MKENT(fdt, CONFIG_SYS_MAXARGS, 1, do_ut_fdt, "", ""),
+#endif
+#ifdef CONFIG_CONSOLE_TRUETYPE
+	U_BOOT_CMD_MKENT(font, CONFIG_SYS_MAXARGS, 1, do_ut_font, "", ""),
 #endif
 #ifdef CONFIG_UT_OPTEE
 	U_BOOT_CMD_MKENT(optee, CONFIG_SYS_MAXARGS, 1, do_ut_optee, "", ""),
@@ -74,16 +90,25 @@ static struct cmd_tbl cmd_ut_sub[] = {
 #ifdef CONFIG_UT_LOG
 	U_BOOT_CMD_MKENT(log, CONFIG_SYS_MAXARGS, 1, do_ut_log, "", ""),
 #endif
+#if defined(CONFIG_SANDBOX) && defined(CONFIG_CMD_MBR) && defined(CONFIG_CMD_MMC) \
+        && defined(CONFIG_MMC_SANDBOX) && defined(CONFIG_MMC_WRITE)
+	U_BOOT_CMD_MKENT(mbr, CONFIG_SYS_MAXARGS, 1, do_ut_mbr, "", ""),
+#endif
 	U_BOOT_CMD_MKENT(mem, CONFIG_SYS_MAXARGS, 1, do_ut_mem, "", ""),
-#ifdef CONFIG_CMD_SETEXPR
+#if defined(CONFIG_SANDBOX) && defined(CONFIG_CMD_SETEXPR)
 	U_BOOT_CMD_MKENT(setexpr, CONFIG_SYS_MAXARGS, 1, do_ut_setexpr, "",
 			 ""),
 #endif
+	U_BOOT_CMD_MKENT(print, CONFIG_SYS_MAXARGS, 1, do_ut_print, "", ""),
 #ifdef CONFIG_UT_TIME
 	U_BOOT_CMD_MKENT(time, CONFIG_SYS_MAXARGS, 1, do_ut_time, "", ""),
 #endif
 #if CONFIG_IS_ENABLED(UT_UNICODE) && !defined(API_BUILD)
 	U_BOOT_CMD_MKENT(unicode, CONFIG_SYS_MAXARGS, 1, do_ut_unicode, "", ""),
+#endif
+#ifdef CONFIG_MEASURED_BOOT
+	U_BOOT_CMD_MKENT(measurement, CONFIG_SYS_MAXARGS, 1, do_ut_measurement,
+			 "", ""),
 #endif
 #ifdef CONFIG_SANDBOX
 	U_BOOT_CMD_MKENT(compression, CONFIG_SYS_MAXARGS, 1, do_ut_compression,
@@ -95,6 +120,18 @@ static struct cmd_tbl cmd_ut_sub[] = {
 	U_BOOT_CMD_MKENT(str, CONFIG_SYS_MAXARGS, 1, do_ut_str, "", ""),
 #ifdef CONFIG_CMD_ADDRMAP
 	U_BOOT_CMD_MKENT(addrmap, CONFIG_SYS_MAXARGS, 1, do_ut_addrmap, "", ""),
+#endif
+#if CONFIG_IS_ENABLED(HUSH_PARSER)
+	U_BOOT_CMD_MKENT(hush, CONFIG_SYS_MAXARGS, 1, do_ut_hush, "", ""),
+#endif
+#ifdef CONFIG_CMD_LOADM
+	U_BOOT_CMD_MKENT(loadm, CONFIG_SYS_MAXARGS, 1, do_ut_loadm, "", ""),
+#endif
+#ifdef CONFIG_CMD_PCI_MPS
+	U_BOOT_CMD_MKENT(pci_mps, CONFIG_SYS_MAXARGS, 1, do_ut_pci_mps, "", ""),
+#endif
+#ifdef CONFIG_CMD_SEAMA
+	U_BOOT_CMD_MKENT(seama, CONFIG_SYS_MAXARGS, 1, do_ut_seama, "", ""),
 #endif
 };
 
@@ -113,6 +150,15 @@ static int do_ut_all(struct cmd_tbl *cmdtp, int flag, int argc,
 	}
 
 	return any_fail;
+}
+
+static int do_ut_info(struct cmd_tbl *cmdtp, int flag, int argc,
+		      char *const argv[])
+{
+	printf("Test suites: %d\n", (int)ARRAY_SIZE(cmd_ut_sub));
+	printf("Total tests: %d\n", (int)UNIT_TEST_ALL_COUNT());
+
+	return 0;
 }
 
 static int do_ut(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
@@ -134,48 +180,83 @@ static int do_ut(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 	return CMD_RET_USAGE;
 }
 
-#ifdef CONFIG_SYS_LONGHELP
-static char ut_help_text[] =
-	"all - execute all enabled tests\n"
+U_BOOT_LONGHELP(ut,
+	"[-r] [-f] [<suite>] - run unit tests\n"
+	"   -r<runs>   Number of times to run each test\n"
+	"   -f         Force 'manual' tests to run as well\n"
+	"   <suite>    Test suite to run, or all\n"
+	"\n"
+	"\nOptions for <suite>:"
+	"\nall - execute all enabled tests"
+	"\ninfo - show info about tests"
+#ifdef CONFIG_CMD_ADDRMAP
+	"\naddrmap - very basic test of addrmap command"
+#endif
+#ifdef CONFIG_CMD_BDI
+	"\nbdinfo - bdinfo command"
+#endif
 #ifdef CONFIG_SANDBOX
-	"ut bloblist - Test bloblist implementation\n"
-	"ut compression - Test compressors and bootm decompression\n"
+	"\nbloblist - bloblist implementation"
+#endif
+#ifdef CONFIG_BOOTSTD
+	"\nbootstd - standard boot implementation"
+#endif
+#ifdef CONFIG_CMDLINE
+	"\ncmd - test various commands"
+#endif
+#ifdef CONFIG_SANDBOX
+	"\ncompression - compressors and bootm decompression"
 #endif
 #ifdef CONFIG_UT_DM
-	"ut dm [test-name]\n"
+	"\ndm - driver model"
 #endif
 #ifdef CONFIG_UT_ENV
-	"ut env [test-name]\n"
+	"\nenv - environment"
+#endif
+#ifdef CONFIG_CMD_FDT
+	"\nfdt - fdt command"
+#endif
+#ifdef CONFIG_CONSOLE_TRUETYPE
+	"\nfont - font command"
+#endif
+#if CONFIG_IS_ENABLED(HUSH_PARSER)
+	"\nhush - Test hush behavior"
+#endif
+#ifdef CONFIG_CMD_LOADM
+	"\nloadm - loadm command parameters and loading memory blob"
 #endif
 #ifdef CONFIG_UT_LIB
-	"ut lib [test-name] - test library functions\n"
+	"\nlib - library functions"
 #endif
 #ifdef CONFIG_UT_LOG
-	"ut log [test-name] - test logging functions\n"
+	"\nlog - logging functions"
 #endif
-	"ut mem [test-name] - test memory-related commands\n"
+	"\nmem - memory-related commands"
 #ifdef CONFIG_UT_OPTEE
-	"ut optee [test-name]\n"
+	"\noptee - test OP-TEE"
 #endif
 #ifdef CONFIG_UT_OVERLAY
-	"ut overlay [test-name]\n"
+	"\noverlay - device tree overlays"
 #endif
-	"ut setexpr [test-name] - test setexpr command\n"
+#ifdef CONFIG_CMD_PCI_MPS
+	"\npci_mps - PCI Express Maximum Payload Size"
+#endif
+	"\nprint  - printing things to the console"
+	"\nsetexpr - setexpr command"
 #ifdef CONFIG_SANDBOX
-	"ut str - Basic test of string functions\n"
+	"\nstr - basic test of string functions"
+#endif
+#ifdef CONFIG_CMD_SEAMA
+	"\nseama - seama command parameters loading and decoding"
 #endif
 #ifdef CONFIG_UT_TIME
-	"ut time - Very basic test of time functions\n"
+	"\ntime - very basic test of time functions"
 #endif
 #if defined(CONFIG_UT_UNICODE) && \
 	!defined(CONFIG_SPL_BUILD) && !defined(API_BUILD)
-	"ut unicode [test-name] - test Unicode functions\n"
+	"\nunicode - Unicode functions"
 #endif
-#ifdef CONFIG_CMD_ADDRMAP
-	"ut addrmap - Very basic test of addrmap command\n"
-#endif
-	;
-#endif /* CONFIG_SYS_LONGHELP */
+	);
 
 U_BOOT_CMD(
 	ut, CONFIG_SYS_MAXARGS, 1, do_ut,

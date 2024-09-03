@@ -1,7 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
- * Copyright 2018 NXP
+ * Copyright 2018, 2021 NXP
  *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #include <common.h>
@@ -18,10 +18,11 @@
 #include <dm/lists.h>
 #include <asm/io.h>
 #include <asm/gpio.h>
-#include <asm/arch/sci/sci.h>
+#include <firmware/imx/sci/sci.h>
 #include <asm/arch/imx8-pins.h>
 #include <asm/arch/iomux.h>
 #include <asm/arch/sys_proto.h>
+#include <asm/sections.h>
 #include <bootm.h>
 
 DECLARE_GLOBAL_DATA_PTR;
@@ -39,17 +40,11 @@ static iomux_cfg_t usdhc2_sd_pwr[] = {
 void spl_board_init(void)
 {
 	struct udevice *dev;
-	int node, ret;
 
-	node = fdt_node_offset_by_compatible(gd->fdt_blob, -1, "fsl,imx8-mu");
-
-	ret = uclass_get_device_by_of_offset(UCLASS_MISC, node, &dev);
-	if (ret) {
-		return;
-	}
-	device_probe(dev);
+	uclass_get_device_by_driver(UCLASS_MISC, DM_DRIVER_GET(imx8_scu), &dev);
 
 	uclass_find_first_device(UCLASS_MISC, &dev);
+
 	for (; dev; uclass_find_next_device(&dev)) {
 		if (device_probe(dev))
 			continue;
@@ -62,7 +57,7 @@ void spl_board_init(void)
 	imx8_iomux_setup_multiple_pads(usdhc2_sd_pwr, ARRAY_SIZE(usdhc2_sd_pwr));
 	gpio_direction_output(USDHC2_SD_PWR, 0);
 
-#ifdef CONFIG_SPL_SERIAL_SUPPORT
+#ifdef CONFIG_SPL_SERIAL
 	preloader_console_init();
 
 	puts("Normal Boot\n");

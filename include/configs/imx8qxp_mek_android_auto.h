@@ -19,27 +19,24 @@
 
 #define FSL_FASTBOOT_FB_DEV "mmc"
 
-#undef CONFIG_EXTRA_ENV_SETTINGS
+#undef CFG_EXTRA_ENV_SETTINGS
 #undef CONFIG_BOOTCOMMAND
 
-#define CONFIG_EXTRA_ENV_SETTINGS					\
-	"splashpos=m,m\0"	  \
-	"fdt_high=0xffffffffffffffff\0"	  \
-	"initrd_high=0xffffffffffffffff\0" \
+#define CFG_EXTRA_ENV_SETTINGS					\
+	"emmc_dev=0\0" \
+	"sd_dev=1\0"
 
 #ifdef CONFIG_IMX_TRUSTY_OS
 #define NS_ARCH_ARM64 1
 #define AVB_RPMB
 #define KEYSLOT_HWPARTITION_ID	2
 #define KEYSLOT_BLKS		0x3FFF
-#endif
 
-#ifdef CONFIG_DUAL_BOOTLOADER
 #define BOOTLOADER_RBIDX_OFFSET  0x3FE000
 #define BOOTLOADER_RBIDX_START   0x3FF000
 #define BOOTLOADER_RBIDX_LEN     0x08
 #define BOOTLOADER_RBIDX_INITVAL 0
-#define CONFIG_SYS_SPL_PTE_RAM_BASE 0x801F8000
+#define CFG_SYS_SPL_PTE_RAM_BASE 0x801F8000
 #endif
 
 #endif /* IMX8QXP_MEK_ANDROID_AUTO_H */

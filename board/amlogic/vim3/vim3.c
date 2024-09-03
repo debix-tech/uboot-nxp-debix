@@ -19,9 +19,15 @@
 
 int mmc_get_env_dev(void)
 {
-	if (meson_get_boot_device() == BOOT_DEVICE_EMMC)
+	switch (meson_get_boot_device()) {
+	case BOOT_DEVICE_EMMC:
 		return 2;
-	return 1;
+	case BOOT_DEVICE_SD:
+		return 1;
+	default:
+		/* boot device is not EMMC|SD */
+		return -1;
+	}
 }
 
 /*
@@ -126,7 +132,7 @@ int meson_ft_board_setup(void *blob, struct bd_info *bd)
 		}
 
 		/* Enable PCIe */
-		len = strlcpy(data, "okay", 32);
+		len = strlcpy(data, "okay", 32) + 1;
 		ret = fdt_setprop(blob, node, "status", data, len);
 		if (ret < 0) {
 			printf("vim3: failed to enable pcie node (%d)\n", ret);
@@ -145,11 +151,10 @@ int meson_ft_board_setup(void *blob, struct bd_info *bd)
 
 int misc_init_r(void)
 {
-	u8 mac_addr[MAC_ADDR_LEN];
+	u8 mac_addr[MAC_ADDR_LEN + 1];
 	char efuse_mac_addr[EFUSE_MAC_SIZE], tmp[3];
+	char serial_string[EFUSE_MAC_SIZE + 1];
 	ssize_t len;
-
-	meson_eth_init(PHY_INTERFACE_MODE_RGMII, 0);
 
 	if (!eth_env_get_enetaddr("ethaddr", mac_addr)) {
 		len = meson_sm_read_efuse(EFUSE_MAC_OFFSET,
@@ -162,8 +167,9 @@ int misc_init_r(void)
 			tmp[0] = efuse_mac_addr[i * 2];
 			tmp[1] = efuse_mac_addr[i * 2 + 1];
 			tmp[2] = '\0';
-			mac_addr[i] = simple_strtoul(tmp, NULL, 16);
+			mac_addr[i] = hextoul(tmp, NULL);
 		}
+		mac_addr[MAC_ADDR_LEN] = '\0';
 
 		if (is_valid_ethaddr(mac_addr))
 			eth_env_set_enetaddr("ethaddr", mac_addr);
@@ -171,6 +177,14 @@ int misc_init_r(void)
 			meson_generate_serial_ethaddr();
 
 		eth_env_get_enetaddr("ethaddr", mac_addr);
+	}
+
+	if (!env_get("serial#")) {
+		eth_env_get_enetaddr("ethaddr", mac_addr);
+		sprintf(serial_string, "%02X%02X%02X%02X%02X%02X",
+			mac_addr[0], mac_addr[1], mac_addr[2],
+			mac_addr[3], mac_addr[4], mac_addr[5]);
+		env_set("serial#", serial_string);
 	}
 
 	return 0;

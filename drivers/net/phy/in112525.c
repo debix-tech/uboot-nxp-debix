@@ -1,5 +1,5 @@
 /*
- * Copyright 2018-2021 NXP
+ * Copyright 2018-2022 NXP
  * Copyright 2018 INPHI
  *
  * Redistribution and use in source and binary forms, with or without
@@ -425,10 +425,10 @@ int in112525_s05_phy_init(struct phy_device *phydev)
 
 #if defined(CONFIG_IN112525_S05_10G) || defined(CONFIG_IN112525_S05_40G)
 	/* adjust VCOs with 20/25 ratio when in half-rate operation */
-	l0_vco_code *= 0.8;
-	l1_vco_code *= 0.8;
-	l2_vco_code *= 0.8;
-	l3_vco_code *= 0.8;
+	l0_vco_code *= 4 / 5;
+	l1_vco_code *= 4 / 5;
+	l2_vco_code *= 4 / 5;
+	l3_vco_code *= 4 / 5;
 
 #endif
 
@@ -983,13 +983,13 @@ int in112525_s03_phy_init(struct phy_device *phydev)
 
 	if (CURRENT_CONFIG.enable_extended_range) {
 		s03_vco_codes.l0_vco_code =
-					(int)(s03_vco_codes.l0_vco_code * 0.8);
+					(int)(s03_vco_codes.l0_vco_code * 4 / 5);
 		s03_vco_codes.l1_vco_code =
-					(int)(s03_vco_codes.l1_vco_code * 0.8);
+					(int)(s03_vco_codes.l1_vco_code * 4 / 5);
 		s03_vco_codes.l2_vco_code =
-					(int)(s03_vco_codes.l2_vco_code * 0.8);
+					(int)(s03_vco_codes.l2_vco_code * 4 / 5);
 		s03_vco_codes.l3_vco_code =
-					(int)(s03_vco_codes.l3_vco_code * 0.8);
+					(int)(s03_vco_codes.l3_vco_code * 4 / 5);
 	}
 
 	mdio_wr(PHYMISC_REG2, 0x0);
@@ -1056,7 +1056,7 @@ int in112525_s05_startup(struct phy_device *phydev)
 	return 0;
 }
 
-struct phy_driver in112525_s05_driver = {
+U_BOOT_PHY_DRIVER(in112525_s05) = {
 	.name = "Inphi in112525_S05P",
 	.uid = PHY_UID_IN112525_S05,
 	.mask = 0x0ff0ffff,
@@ -1068,7 +1068,7 @@ struct phy_driver in112525_s05_driver = {
 	.shutdown = &gen10g_shutdown,
 };
 
-struct phy_driver in112525_s03_driver = {
+U_BOOT_PHY_DRIVER(in112525_s03) = {
 	.name = "Inphi in112525_S03P",
 	.uid = PHY_UID_IN112525_S03,
 	.mask = 0x0ff0fff0,
@@ -1079,10 +1079,3 @@ struct phy_driver in112525_s03_driver = {
 	.startup = &in112525_s03_startup,
 	.shutdown = &gen10g_shutdown,
 };
-
-int phy_in112525_init(void)
-{
-	phy_register(&in112525_s05_driver);
-	phy_register(&in112525_s03_driver);
-	return 0;
-}
