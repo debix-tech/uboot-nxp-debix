@@ -10,7 +10,7 @@
 
 //John_gao add uboot version
 #if 1
-#define Debix_C_VERSION " Debix Model AB V1.0.1 "
+#define Debix_C_VERSION " Debix_Model_AB V1.0.2 "
 #define U_BOOT_VERSION_STRING Debix_C_VERSION " (" U_BOOT_DATE " - " U_BOOT_TIME ")"
 
 #else
