@@ -67,10 +67,14 @@ static int simple_panel_of_to_plat(struct udevice *dev)
 				return ret;
 		}
 	}
+
 	ret = uclass_get_device_by_phandle(UCLASS_PANEL_BACKLIGHT, dev,
-					   "backlight", &priv->backlight);
+						   "backlight", &priv->backlight);
 	if (ret) {
-		printf("%s: Cannot get backlight: ret=%d\n", __func__, ret);
+		debug("%s: Cannot get backlight: ret=%d\n", __func__, ret);
+		if (ret != -ENOENT)
+			return log_ret(ret);
+
 		priv->backlight = NULL;
 	}
 
@@ -82,6 +86,29 @@ static int simple_panel_of_to_plat(struct udevice *dev)
 		if (ret != -ENOENT)
 			return log_ret(ret);
 	}
+
+	return 0;
+}
+
+static int simple_panel_remove(struct udevice *dev)
+{
+	struct simple_panel_priv *priv = dev_get_priv(dev);
+	int ret;
+
+	if (priv->backlight) {
+		ret = backlight_set_brightness(priv->backlight, BACKLIGHT_OFF);
+		if (ret)
+			return ret;
+	}
+
+	if (IS_ENABLED(CONFIG_DM_REGULATOR) && priv->reg) {
+		debug("%s: Enable regulator '%s'\n", __func__, priv->reg->name);
+		ret = regulator_set_enable(priv->reg, false);
+		if (ret)
+			return ret;
+	}
+
+	dm_gpio_set_value(&priv->enable, 0);
 
 	return 0;
 }
@@ -126,4 +153,5 @@ U_BOOT_DRIVER(simple_panel) = {
 	.of_to_plat	= simple_panel_of_to_plat,
 	.probe		= simple_panel_probe,
 	.priv_auto	= sizeof(struct simple_panel_priv),
+	.remove		= simple_panel_remove,
 };

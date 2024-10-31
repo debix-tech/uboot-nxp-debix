@@ -30,17 +30,21 @@ static struct imx_intpll_rate_table imx9_intpll_tbl[] = {
 	INT_PLL_RATE(1400000000U, 1, 175, 3), /* 1.4Ghz */
 	INT_PLL_RATE(1000000000U, 1, 166, 4), /* 1000Mhz */
 	INT_PLL_RATE(900000000U, 1, 150, 4), /* 900Mhz */
+	INT_PLL_RATE(800000000U, 1, 200, 6), /* 800Mhz */
 };
 
 static struct imx_fracpll_rate_table imx9_fracpll_tbl[] = {
 	FRAC_PLL_RATE(1000000000U, 1, 166, 4, 2, 3), /* 1000Mhz */
 	FRAC_PLL_RATE(933000000U, 1, 155, 4, 1, 2), /* 933Mhz */
+	FRAC_PLL_RATE(800000000U, 1, 200, 6, 0, 1), /* 800Mhz */
 	FRAC_PLL_RATE(700000000U, 1, 145, 5, 5, 6), /* 700Mhz */
+	FRAC_PLL_RATE(600000000U, 1, 200, 8, 0, 1), /* 600Mhz */
 	FRAC_PLL_RATE(484000000U, 1, 121, 6, 0, 1),
 	FRAC_PLL_RATE(445333333U, 1, 167, 9, 0, 1),
 	FRAC_PLL_RATE(466000000U, 1, 155, 8, 1, 3), /* 466Mhz */
 	FRAC_PLL_RATE(400000000U, 1, 200, 12, 0, 1), /* 400Mhz */
 	FRAC_PLL_RATE(300000000U, 1, 150, 12, 0, 1),
+	FRAC_PLL_RATE(200000000U, 1, 200, 24, 0, 1), /* 200Mhz */
 };
 
 /* return in khz */
@@ -105,8 +109,8 @@ static u32 decode_pll_out(struct ana_pll_reg *reg, bool fracpll)
 }
 
 /* return in khz */
-static u32 decode_pll_pfd(struct ana_pll_reg *reg,
-	struct ana_pll_dfs *dfs_reg, bool div2, bool fracpll)
+static u32 decode_pll_pfd(struct ana_pll_reg *reg, struct ana_pll_dfs *dfs_reg,
+			  bool div2, bool fracpll)
 {
 	u32 pllvco = decode_pll_vco(reg, fracpll);
 	u32 dfs_ctrl = readl(&dfs_reg->dfs_ctrl.reg);
@@ -118,8 +122,8 @@ static u32 decode_pll_pfd(struct ana_pll_reg *reg,
 		return pllvco;
 
 	if (!(dfs_ctrl & PLL_DFS_CTRL_ENABLE) ||
-		(div2 && !(dfs_ctrl & PLL_DFS_CTRL_CLKOUT_DIV2)) ||
-		(!div2 && !(dfs_ctrl & PLL_DFS_CTRL_CLKOUT)))
+	    (div2 && !(dfs_ctrl & PLL_DFS_CTRL_CLKOUT_DIV2)) ||
+	    (!div2 && !(dfs_ctrl & PLL_DFS_CTRL_CLKOUT)))
 		return 0;
 
 	mfn = dfs_div & GENMASK(2, 0);
@@ -206,6 +210,9 @@ int configure_intpll(enum ccm_clk_src pll, u32 freq)
 		return -EPERM;
 	}
 
+	/* Clear PLL HW CTRL SEL */
+	setbits_le32(&reg->ctrl.reg_clr, PLL_CTRL_HW_CTRL_SEL);
+
 	/* Bypass the PLL to ref */
 	writel(PLL_CTRL_CLKMUX_BYPASS, &reg->ctrl.reg_set);
 
@@ -213,21 +220,16 @@ int configure_intpll(enum ccm_clk_src pll, u32 freq)
 	writel(PLL_CTRL_CLKMUX_EN | PLL_CTRL_POWERUP, &reg->ctrl.reg_clr);
 
 	/* Program the ODIV, RDIV, MFI */
-	writel((rate->odiv & GENMASK(7, 0)) |
-		((rate->rdiv << 13 ) & GENMASK(15, 13)) |
-		((rate->mfi << 16) & GENMASK(24, 16)), &reg->div.reg);
+	writel((rate->odiv & GENMASK(7, 0)) | ((rate->rdiv << 13) & GENMASK(15, 13)) |
+	       ((rate->mfi << 16) & GENMASK(24, 16)), &reg->div.reg);
 
-#ifndef CONFIG_TARGET_IMX93_EMU
 	/* wait 5us */
 	udelay(5);
-#endif
 
 	/* power up the PLL and wait lock (max wait time 100 us) */
 	writel(PLL_CTRL_POWERUP, &reg->ctrl.reg_set);
 
-#ifndef CONFIG_TARGET_IMX93_EMU
 	udelay(100);
-#endif
 
 	pll_status = readl(&reg->pll_status);
 	if (pll_status & PLL_STATUS_PLL_LOCK) {
@@ -244,13 +246,12 @@ int configure_intpll(enum ccm_clk_src pll, u32 freq)
 	return 0;
 }
 
-
 int configure_fracpll(enum ccm_clk_src pll, u32 freq)
 {
-	int i;
 	struct imx_fracpll_rate_table *rate;
 	struct ana_pll_reg *reg;
 	u32 pll_status;
+	int i;
 
 	for (i = 0; i < ARRAY_SIZE(imx9_fracpll_tbl); i++) {
 		if (freq == imx9_fracpll_tbl[i].rate)
@@ -285,9 +286,8 @@ int configure_fracpll(enum ccm_clk_src pll, u32 freq)
 	writel(PLL_CTRL_CLKMUX_EN | PLL_CTRL_POWERUP, &reg->ctrl.reg_clr);
 
 	/* Program the ODIV, RDIV, MFI */
-	writel((rate->odiv & GENMASK(7, 0)) |
-		((rate->rdiv << 13 ) & GENMASK(15, 13)) |
-		((rate->mfi << 16) & GENMASK(24, 16)), &reg->div.reg);
+	writel((rate->odiv & GENMASK(7, 0)) | ((rate->rdiv << 13) & GENMASK(15, 13)) |
+	       ((rate->mfi << 16) & GENMASK(24, 16)), &reg->div.reg);
 
 	/* Set SPREAD_SPECRUM enable to 0 */
 	writel(PLL_SS_EN, &reg->ss.reg_clr);
@@ -296,31 +296,26 @@ int configure_fracpll(enum ccm_clk_src pll, u32 freq)
 	writel((rate->mfn << 2), &reg->num.reg);
 	writel((rate->mfd & GENMASK(29, 0)), &reg->denom.reg);
 
-#ifndef CONFIG_TARGET_IMX93_EMU
 	/* wait 5us */
 	udelay(5);
-#endif
 
 	/* power up the PLL and wait lock (max wait time 100 us) */
 	writel(PLL_CTRL_POWERUP, &reg->ctrl.reg_set);
 
-#ifndef CONFIG_TARGET_IMX93_EMU
 	udelay(100);
-#endif
 
 	pll_status = readl(&reg->pll_status);
 	if (pll_status & PLL_STATUS_PLL_LOCK) {
 		writel(PLL_CTRL_CLKMUX_EN, &reg->ctrl.reg_set);
 
-#ifndef CONFIG_TARGET_IMX93_EMU
 		/* check the MFN is updated */
 		pll_status = readl(&reg->pll_status);
 		if ((pll_status & ~0x3) != (rate->mfn << 2)) {
 			debug("MFN update not matched, pll_status 0x%x, mfn 0x%x\n",
-				pll_status, rate->mfn);
+			      pll_status, rate->mfn);
 			return -EIO;
 		}
-#endif
+
 		/* clear bypass */
 		writel(PLL_CTRL_CLKMUX_BYPASS, &reg->ctrl.reg_clr);
 
@@ -371,22 +366,19 @@ int configure_pll_pfd(enum ccm_clk_src pll_pfg, u32 mfi, u32 mfn, bool div2_en)
 	writel(PLL_DFS_CTRL_ENABLE | PLL_DFS_CTRL_CLKOUT |
 		PLL_DFS_CTRL_CLKOUT_DIV2, &dfs->dfs_ctrl.reg_clr);
 
-	writel(((mfi << 8) & GENMASK(15, 8)) | (mfn & GENMASK(2, 0)),
-		&dfs->dfs_div.reg);
+	writel(((mfi << 8) & GENMASK(15, 8)) | (mfn & GENMASK(2, 0)), &dfs->dfs_div.reg);
 
 	writel(PLL_DFS_CTRL_CLKOUT, &dfs->dfs_ctrl.reg_set);
 	if (div2_en)
 		writel(PLL_DFS_CTRL_CLKOUT_DIV2, &dfs->dfs_ctrl.reg_set);
 	writel(PLL_DFS_CTRL_ENABLE, &dfs->dfs_ctrl.reg_set);
 
-#ifndef CONFIG_TARGET_IMX93_EMU
 	/*
-         * As HW expert said: after enabling the DFS, clock will start
-         * coming after 6 cycles output clock period.
-         * 5us is much bigger than expected, so it will be safe
-         */
+	 * As HW expert said: after enabling the DFS, clock will start
+	 * coming after 6 cycles output clock period.
+	 * 5us is much bigger than expected, so it will be safe
+	 */
 	udelay(5);
-#endif
 
 	dfs_status = readl(&reg->dfs_status);
 
@@ -437,8 +429,7 @@ int update_fracpll_mfn(enum ccm_clk_src pll, int mfn)
 		} while (((pll_status & ~0x3) != (u32)mfn) && count > 0);
 
 		if (count <= 0) {
-			printf("update MFN timeout, pll_status 0x%x, mfn 0x%x\n",
-				pll_status, mfn);
+			printf("update MFN timeout, pll_status 0x%x, mfn 0x%x\n", pll_status, mfn);
 			return -EIO;
 		}
 	}
@@ -533,6 +524,7 @@ u32 get_clk_src_rate(enum ccm_clk_src source)
 u32 get_arm_core_clk(void)
 {
 	u32 val;
+
 	ccm_shared_gpr_get(SHARED_GPR_A55_CLK, &val);
 
 	if (val & SHARED_GPR_A55_CLK_SEL_PLL)
@@ -550,13 +542,6 @@ void set_arm_core_max_clk(void)
 
 	ccm_shared_gpr_set(SHARED_GPR_A55_CLK, SHARED_GPR_A55_CLK_SEL_CCM);
 	configure_intpll(ARM_PLL_CLK, speed);
-	ccm_shared_gpr_set(SHARED_GPR_A55_CLK, SHARED_GPR_A55_CLK_SEL_PLL);
-}
-
-void set_arm_core_low_drive_clk(void)
-{
-	ccm_shared_gpr_set(SHARED_GPR_A55_CLK, SHARED_GPR_A55_CLK_SEL_CCM);
-	configure_intpll(ARM_PLL_CLK, 900000000);
 	ccm_shared_gpr_set(SHARED_GPR_A55_CLK, SHARED_GPR_A55_CLK_SEL_PLL);
 }
 
@@ -618,7 +603,7 @@ u32 get_lpuart_clk(void)
 
 void init_uart_clk(u32 index)
 {
-	switch(index) {
+	switch (index) {
 	case LPUART1_CLK_ROOT:
 		/* 24M */
 		ccm_lpcg_on(CCGR_URT1, false);
@@ -633,7 +618,7 @@ void init_uart_clk(u32 index)
 void init_clk_usdhc(u32 index)
 {
 	u32 div;
-	if (IS_ENABLED(CONFIG_IMX9_LOW_DRIVE_MODE))
+	if (is_voltage_mode(VOLT_LOW_DRIVE))
 		div = 3; /* 266.67 Mhz */
 	else
 		div = 2; /* 400 Mhz */
@@ -711,6 +696,15 @@ void dram_disable_bypass(void)
 	/* Switch from DRAM  clock root from CCM to PLL */
 	ccm_shared_gpr_set(SHARED_GPR_DRAM_CLK, SHARED_GPR_DRAM_CLK_SEL_PLL);
 }
+
+void set_arm_clk(ulong freq)
+{
+	/* Increase ARM clock to 1.7Ghz */
+	ccm_shared_gpr_set(SHARED_GPR_A55_CLK, SHARED_GPR_A55_CLK_SEL_CCM);
+	configure_intpll(ARM_PLL_CLK, 1700000000);
+	ccm_shared_gpr_set(SHARED_GPR_A55_CLK, SHARED_GPR_A55_CLK_SEL_PLL);
+}
+
 #endif
 
 void bus_clock_init_low_drive(void)
@@ -722,8 +716,8 @@ void bus_clock_init_low_drive(void)
 	/* Set A55 mtr bus to 133M */
 	ccm_clk_root_cfg(ARM_A55_MTR_BUS_CLK_ROOT, SYS_PLL_PFD1_DIV2, 3);
 
-	/* Sentinel to 133M */
-	ccm_clk_root_cfg(SENTINEL_CLK_ROOT, SYS_PLL_PFD1_DIV2, 3);
+	/* ELE to 133M */
+	ccm_clk_root_cfg(ELE_CLK_ROOT, SYS_PLL_PFD1_DIV2, 3);
 	/* Bus_wakeup to 133M */
 	ccm_clk_root_cfg(BUS_WAKEUP_CLK_ROOT, SYS_PLL_PFD1_DIV2, 3);
 	/* Bus_AON to 133M */
@@ -755,15 +749,18 @@ void bus_clock_init(void)
 	/* Set A55 mtr bus to 133M */
 	ccm_clk_root_cfg(ARM_A55_MTR_BUS_CLK_ROOT, SYS_PLL_PFD1_DIV2, 3);
 
-	/* Sentinel to 200M */
-	ccm_clk_root_cfg(SENTINEL_CLK_ROOT, SYS_PLL_PFD1_DIV2, 2);
+	/* ELE to 200M */
+	ccm_clk_root_cfg(ELE_CLK_ROOT, SYS_PLL_PFD1_DIV2, 2);
 	/* Bus_wakeup to 133M */
 	ccm_clk_root_cfg(BUS_WAKEUP_CLK_ROOT, SYS_PLL_PFD1_DIV2, 3);
 	/* Bus_AON to 133M */
 	ccm_clk_root_cfg(BUS_AON_CLK_ROOT, SYS_PLL_PFD1_DIV2, 3);
 	/* M33 to 200M */
 	ccm_clk_root_cfg(M33_CLK_ROOT, SYS_PLL_PFD1_DIV2, 2);
-	/* WAKEUP_AXI to 312.5M, because of FEC only can support to 320M for generating MII clock at 2.5M  */
+	/*
+	 * WAKEUP_AXI to 312.5M, because of FEC only can support to 320M for
+	 * generating MII clock at 2.5M
+	 */
 	ccm_clk_root_cfg(WAKEUP_AXI_CLK_ROOT, SYS_PLL_PFD2, 2);
 	/* SWO TRACE to 133M */
 	ccm_clk_root_cfg(SWO_TRACE_CLK_ROOT, SYS_PLL_PFD1_DIV2, 3);
@@ -775,17 +772,11 @@ void bus_clock_init(void)
 	ccm_clk_root_cfg(NIC_APB_CLK_ROOT, SYS_PLL_PFD1_DIV2, 3);
 }
 
-int clock_init(void)
+int clock_init_early(void)
 {
-	if (IS_ENABLED(CONFIG_IMX9_LOW_DRIVE_MODE)){
-		bus_clock_init_low_drive();
-		set_arm_core_low_drive_clk();
-	} else {
-		bus_clock_init();
-	}
+	int i;
 
 	/* allow for non-secure access */
-	int i;
 	for (i = 0; i < OSCPLL_END; i++)
 		ccm_clk_src_tz_access(i, true, false, false);
 
@@ -797,6 +788,19 @@ int clock_init(void)
 
 	for (i = 0; i < SHARED_GPR_NUM; i++)
 		ccm_shared_gpr_tz_access(i, true, false, false);
+
+	return 0;
+}
+
+/* Set bus and A55 core clock per voltage mode */
+int clock_init_late(void)
+{
+	if (is_voltage_mode(VOLT_LOW_DRIVE)){
+		bus_clock_init_low_drive();
+		set_arm_core_max_clk();
+	} else {
+		bus_clock_init();
+	}
 
 	return 0;
 }
@@ -936,7 +940,7 @@ int do_showclocks(struct cmd_tbl *cmdtp, int flag, int argc, char * const argv[]
 	freq = mxc_get_clock(MXC_ARM_CLK);
 	printf("ARM CORE    %8d MHz\n", freq / 1000000);
 	freq = mxc_get_clock(MXC_IPG_CLK);
-	printf("IPG    		%8d MHz\n", freq / 1000000);
+	printf("IPG         %8d MHz\n", freq / 1000000);
 	freq = mxc_get_clock(MXC_UART_CLK);
 	printf("UART3          %8d MHz\n", freq / 1000000);
 	freq = mxc_get_clock(MXC_ESDHC_CLK);
@@ -953,4 +957,3 @@ U_BOOT_CMD(
 	""
 );
 #endif
-

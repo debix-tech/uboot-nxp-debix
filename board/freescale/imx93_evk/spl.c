@@ -20,7 +20,7 @@
 #include <asm/mach-imx/mxc_i2c.h>
 #include <asm/arch-mx7ulp/gpio.h>
 #include <asm/mach-imx/syscounter.h>
-#include <asm/mach-imx/s400_api.h>
+#include <asm/mach-imx/ele_api.h>
 #include <dm/uclass.h>
 #include <dm/device.h>
 #include <dm/uclass-internal.h>
@@ -57,7 +57,9 @@ void spl_board_init(void)
 {
 	int ret;
 
+#ifdef CONFIG_UBOOT_DEBUG
 	puts("Normal Boot\n");
+#endif
 
 	ret = ahab_start_rng();
 	if (ret)
@@ -66,7 +68,25 @@ void spl_board_init(void)
 
 void spl_dram_init(void)
 {
-	ddr_init(&dram_timing);
+	int ret ; 
+	printk("Start Init DDR\n");
+	ret = ddr_init(&dram_timing);
+	//try JSC ddr 2G
+	if(ret) {
+	    printf("try jsc 2G\n");
+	    ret = ddr_init(&dram_timing_jsc2g);
+	}
+	//try JSC ddr 1G
+	if(ret) {
+	    printf("try jsc 1G\n");
+	    ret = ddr_init(&dram_timing_jsc);
+	}
+
+	if(ret){
+		//John_gao add for ddr err set to reset
+		reset_cpu();
+	}
+
 }
 
 #if CONFIG_IS_ENABLED(DM_PMIC_PCA9450)
@@ -74,6 +94,7 @@ int power_init_board(void)
 {
 	struct udevice *dev;
 	int ret;
+	unsigned int val = 0, buck_val;
 
 	ret = pmic_get("pmic@25", &dev);
 	if (ret == -ENODEV) {
@@ -89,30 +110,49 @@ int power_init_board(void)
 	/* enable DVS control through PMIC_STBY_REQ */
 	pmic_reg_write(dev, PCA9450_BUCK1CTRL, 0x59);
 
-	if (IS_ENABLED(CONFIG_IMX9_LOW_DRIVE_MODE)){
-		/* 0.8v for Low drive mode
-		 */
-		pmic_reg_write(dev, PCA9450_BUCK1OUT_DVS0, 0x10);
-		pmic_reg_write(dev, PCA9450_BUCK3OUT_DVS0, 0x10);
+	ret = pmic_reg_read(dev, PCA9450_PWR_CTRL);
+	if (ret < 0)
+		return ret;
+	else
+		val = ret;
+
+	if (is_voltage_mode(VOLT_LOW_DRIVE)) {
+		buck_val = 0x0c; /* 0.8v for Low drive mode */
+		printf("PMIC: Low Drive Voltage Mode\n");
+	} else if (is_voltage_mode(VOLT_NOMINAL_DRIVE)) {
+		buck_val = 0x10; /* 0.85v for Nominal drive mode */
+		printf("PMIC: Nominal Voltage Mode\n");
 	} else {
-		/* 0.9v for Over drive mode
-		 */
-		pmic_reg_write(dev, PCA9450_BUCK1OUT_DVS0, 0x18);
-		pmic_reg_write(dev, PCA9450_BUCK3OUT_DVS0, 0x18);
+		buck_val = 0x14; /* 0.9v for Over drive mode */
+		printf("PMIC: Over Drive Voltage Mode\n");
+	}
+
+	if (val & PCA9450_REG_PWRCTRL_TOFF_DEB) {
+		pmic_reg_write(dev, PCA9450_BUCK1OUT_DVS0, buck_val);
+		pmic_reg_write(dev, PCA9450_BUCK3OUT_DVS0, buck_val);
+	} else {
+		pmic_reg_write(dev, PCA9450_BUCK1OUT_DVS0, buck_val + 0x4);
+		pmic_reg_write(dev, PCA9450_BUCK3OUT_DVS0, buck_val + 0x4);
+	}
+
+	if (IS_ENABLED(CONFIG_IMX93_EVK_LPDDR4)) {
+		/* Set VDDQ to 1.1V from buck2 */
+		pmic_reg_write(dev, PCA9450_BUCK2OUT_DVS0, 0x28);
 	}
 
 	/* set standby voltage to 0.65v */
-	pmic_reg_write(dev, PCA9450_BUCK1OUT_DVS1, 0x4);
+	if (val & PCA9450_REG_PWRCTRL_TOFF_DEB)
+		pmic_reg_write(dev, PCA9450_BUCK1OUT_DVS1, 0x0);
+	else
+		pmic_reg_write(dev, PCA9450_BUCK1OUT_DVS1, 0x4);
 
 	/* I2C_LT_EN*/
 	pmic_reg_write(dev, 0xa, 0x3);
-
-	/* set WDOG_B_CFG to cold reset */
-	pmic_reg_write(dev, PCA9450_RESET_CTRL, 0xA1);
 	return 0;
 }
 #endif
 
+extern int imx9_probe_mu(void *ctx, struct event *event);
 void board_init_f(ulong dummy)
 {
 	int ret;
@@ -130,17 +170,21 @@ void board_init_f(ulong dummy)
 
 	preloader_console_init();
 
-	ret = arch_cpu_init_dm();
+	ret = imx9_probe_mu(NULL, NULL);
 	if (ret) {
-		printf("Fail to init Sentinel API\n");
+		printf("Fail to init ELE API\n");
 	} else {
+#ifdef CONFIG_UBOOT_DEBUG
 		printf("SOC: 0x%x\n", gd->arch.soc_rev);
 		printf("LC: 0x%x\n", gd->arch.lifecycle);
+#endif
 	}
+
+	clock_init_late();
 
 	power_init_board();
 
-	if (!IS_ENABLED(CONFIG_IMX9_LOW_DRIVE_MODE))
+	if (!is_voltage_mode(VOLT_LOW_DRIVE))
 		set_arm_core_max_clk();
 
 	/* Init power of mix */
@@ -154,8 +198,16 @@ void board_init_f(ulong dummy)
 
 	/* Put M33 into CPUWAIT for following kick */
 	ret = m33_prepare();
+#ifdef CONFIG_UBOOT_DEBUG
 	if (!ret)
 		printf("M33 prepare ok\n");
+#endif
 
 	board_init_r(NULL, 0);
 }
+
+#ifdef CONFIG_ANDROID_SUPPORT
+int board_get_emmc_id(void) {
+	return 0;
+}
+#endif

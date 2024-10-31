@@ -23,6 +23,9 @@ config SYSCOUNTER_TIMER
 config GPT_TIMER
 	bool
 
+config MXC_GPT_HCLK
+	bool
+
 config IMX_RDC
 	bool "i.MX Resource domain controller driver"
 	depends on ARCH_MX6 || ARCH_MX7
@@ -80,6 +83,14 @@ config IMX_HAB
 	help
 	  This option enables the support for secure boot (HAB).
 	  See doc/imx/habv4/* for more details.
+
+config IMX_SPL_FIT_FDT_SIGNATURE
+	bool "Enable to verify signature of FIT FDT"
+	depends on IMX_HAB
+	depends on ARCH_IMX8M
+	help
+	  Enable SPL to verify signature of FIT FDT during FIT loading.
+	  This needs additional signing to FIT FDT part.
 
 config CSF_SIZE
 	hex "Maximum size for Command Sequence File (CSF) binary"
@@ -177,6 +188,14 @@ config CMD_QSPIHDR
 	  Boot from Q(F)SPI need a boot config header, this command can
 	  help to check if header already exists or add one if not.
 
+config CMD_FSPINAND
+	bool "FSPINAND Boot Control Block(BCB) command"
+	depends on MTD
+	default y
+	help
+	  Boot from FSPI NAND need extra boot control Blocks which contains
+	  both Firmware Configuration Block(FCB), Discovered Bad Block Table(DBBT).
+
 config FSL_MFGPROT
 	bool "Support the 'mfgprot' command"
 	depends on IMX_HAB || AHAB_BOOT
@@ -234,9 +253,14 @@ config DDRMC_VF610_CALIBRATION
 	  shall perform it on a new PCB and then use those values to program
 	  the ddrmc_cr_setting on relevant board file.
 
+config IMX8_ROMAPI
+	def_bool y
+	depends on IMX8MN || IMX8MP || IMX8ULP || IMX9
+
 config SPL_IMX_ROMAPI_LOADADDR
 	hex "Default load address to load image through ROM API"
-	depends on IMX8MN || IMX8MP || IMX8ULP || IMX9
+	depends on IMX8_ROMAPI || SPL_BOOTROM_SUPPORT
+	default 0
 
 config IMX_DCD_ADDR
 	hex "DCD Blocks location on the image"
@@ -262,6 +286,12 @@ config IMX_CONTAINER_CFG
 	  This is to specific the cfg file for generating container
 	  image which will be loaded by SPL.
 
+config IOMUX_LPSR
+	bool
+
+config IOMUX_SHARE_CONF_REG
+	bool
+
 config CMD_PROVISION_KEY
 	bool "Support to provision a encrypted key as black blob"
 	depends on IMX8MM || IMX8MN
@@ -282,6 +312,7 @@ config ANDROID_SUPPORT
 	select SUPPORT_RAW_INITRD
 	select LIBAVB
 	select AVB_SUPPORT
+	imply IMX_SPL_FIT_FDT_SIGNATURE
 
 config ANDROID_AUTO_SUPPORT
 	bool "Android Automotive features support"
@@ -387,6 +418,26 @@ config GENERATE_MPPUBK
 config SECURE_UNLOCK
 	bool "Enable secure unlock for Android devices, it can only be enabled on HAB closed board"
 	depends on IMX_TRUSTY_OS
+
+config IMX_MATTER_TRUSTY
+	bool "Enable Trusty OS feature for Matter"
+	depends on IMX_TRUSTY_OS
+	default n
+
+config AUTO_SET_RPMB_KEY
+	bool "Set RPMB key automatically"
+	depends on IMX_TRUSTY_OS
+	help
+	  Automatically set the rpmb key which is derived from the hardware
+	  unique key in Trusty OS.
+
+config VPU_SECURE_HEAP
+	bool "Memory need by WIDEVINE_L1"
+	depends on IMX_TRUSTY_OS && (IMX8QM)
+	help
+	  if enable widevine L1 on imx8qm, need to pass secure memory and vpu memory
+	  to linux. It is only used by imx8qm.
+	default n
 
 endmenu
 

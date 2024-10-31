@@ -446,7 +446,7 @@ static int usb_kbd_getc(struct stdio_dev *sdev)
 	data = usb_kbd_dev->privptr;
 
 	while (data->usb_in_pointer == data->usb_out_pointer) {
-		WATCHDOG_RESET();
+		schedule();
 		usb_kbd_poll_for_event(usb_kbd_dev);
 	}
 
@@ -547,11 +547,15 @@ static int usb_kbd_probe_dev(struct usb_device *dev, unsigned int ifnum)
 	if (usb_int_msg(dev, data->intpipe, data->new, data->intpktsize,
 			data->intinterval, false) < 0) {
 #endif
-		printf("Failed to get keyboard state from device %04x:%04x\n",
-		       dev->descriptor.idVendor, dev->descriptor.idProduct);
+		//printf("Failed to get keyboard state from device %04x:%04x\n",
+		//       dev->descriptor.idVendor, dev->descriptor.idProduct);
 		/* Abort, we don't want to use that non-functional keyboard. */
-		return 0;
+		//return 0;
+		debug("Failed to get keyboard state from device %04x:%04x\n",
+		       dev->descriptor.idVendor, dev->descriptor.idProduct);
+		
 	}
+	printf("keyboard %04x:%04x\n", dev->descriptor.idVendor, dev->descriptor.idProduct);
 
 	/* Success. */
 	return 1;
@@ -581,21 +585,22 @@ static int probe_usb_keyboard(struct usb_device *dev)
 
 	stdinname = env_get("stdin");
 #if CONFIG_IS_ENABLED(CONSOLE_MUX)
-	error = iomux_doenv(stdin, stdinname);
-	if (error)
-		return error;
+	if (strstr(stdinname, DEVNAME) != NULL) {
+		error = iomux_doenv(stdin, stdinname);
+		if (error)
+			return error;
+	}
 #else
 	/* Check if this is the standard input device. */
-	if (strcmp(stdinname, DEVNAME))
-		return 1;
+	if (!strcmp(stdinname, DEVNAME)) {
+		/* Reassign the console */
+		if (overwrite_console())
+			return 1;
 
-	/* Reassign the console */
-	if (overwrite_console())
-		return 1;
-
-	error = console_assign(stdin, DEVNAME);
-	if (error)
-		return error;
+		error = console_assign(stdin, DEVNAME);
+		if (error)
+			return error;
+	}
 #endif
 
 	return 0;

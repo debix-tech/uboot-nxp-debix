@@ -591,16 +591,6 @@ static void do_usb_start(void)
 	drv_usb_kbd_init();
 # endif
 #endif /* !CONFIG_DM_USB */
-#ifdef CONFIG_USB_HOST_ETHER
-# ifdef CONFIG_DM_ETH
-#  ifndef CONFIG_DM_USB
-#   error "You must use CONFIG_DM_USB if you want to use CONFIG_USB_HOST_ETHER with CONFIG_DM_ETH"
-#  endif
-# else
-	/* try to recognize ethernet devices immediately */
-	usb_ether_curr_dev = usb_host_eth_scan(1);
-# endif
-#endif
 }
 
 #ifdef CONFIG_DM_USB
@@ -638,13 +628,17 @@ static int do_usb(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 	if (strncmp(argv[1], "start", 5) == 0) {
 		if (usb_started)
 			return 0; /* Already started */
+#ifdef CONFIG_UBOOT_DEBUG
 		printf("starting USB...\n");
+#endif
 		do_usb_start();
 		return 0;
 	}
 
 	if (strncmp(argv[1], "reset", 5) == 0) {
+#ifdef CONFIG_UBOOT_DEBUG
 		printf("resetting USB...\n");
+#endif
 		if (do_usb_stop_keyboard(1) != 0)
 			return 1;
 		usb_stop();
@@ -656,7 +650,9 @@ static int do_usb(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 			console_assign(stdin, "serial");
 		if (do_usb_stop_keyboard(0) != 0)
 			return 1;
+#ifdef CONFIG_UBOOT_DEBUG
 		printf("stopping USB..\n");
+#endif
 		usb_stop();
 		return 0;
 	}
@@ -719,7 +715,7 @@ static int do_usb(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 	if (strncmp(argv[1], "stor", 4) == 0)
 		return usb_stor_info();
 
-	return blk_common_cmd(argc, argv, IF_TYPE_USB, &usb_stor_curr_dev);
+	return blk_common_cmd(argc, argv, UCLASS_USB, &usb_stor_curr_dev);
 #else
 	return CMD_RET_USAGE;
 #endif /* CONFIG_USB_STORAGE */

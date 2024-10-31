@@ -8,6 +8,7 @@
 #include <cpu.h>
 #include <cpu_func.h>
 #include <dm.h>
+#include <event.h>
 #include <init.h>
 #include <log.h>
 #include <asm/cache.h>
@@ -59,7 +60,8 @@ int arch_cpu_init(void)
 
 static void power_off_all_usb(void);
 
-int arch_cpu_init_dm(void)
+#define ARM_SMMU_sCR0_CLIENTPD	(1 << 0)
+static int imx8_init_mu(void *ctx, struct event *event)
 {
 	struct udevice *devp;
 	int node, ret;
@@ -71,6 +73,9 @@ int arch_cpu_init_dm(void)
 		printf("could not get scu %d\n", ret);
 		return ret;
 	}
+
+	if (gd->flags & GD_FLG_RELOC) /* Skip others for board_r */
+		return 0;
 
 	if (IS_ENABLED(CONFIG_XEN))
 		return 0;
@@ -89,18 +94,21 @@ int arch_cpu_init_dm(void)
 	}
 
 #if !defined(CONFIG_TARGET_IMX8QM_MEK_A72_ONLY) && !defined(CONFIG_TARGET_IMX8QM_MEK_A53_ONLY)
-	if (is_imx8qm()) {
-		ret = sc_pm_set_resource_power_mode(-1, SC_R_SMMU,
-						    SC_PM_PW_MODE_ON);
-		if (ret)
-			return ret;
-	}
+#ifdef CONFIG_IMX8QM
+	ret = sc_pm_set_resource_power_mode(-1, SC_R_SMMU,
+					    SC_PM_PW_MODE_ON);
+	if (ret)
+		return ret;
+	/* bypass system MMU translation for all clients */
+	writel(ARM_SMMU_sCR0_CLIENTPD, SMMU_BASE);
+#endif
 #endif
 
 	power_off_all_usb();
 
 	return 0;
 }
+EVENT_SPY(EVT_DM_POST_INIT, imx8_init_mu);
 
 #if defined(CONFIG_ARCH_MISC_INIT)
 int arch_misc_init(void)
@@ -540,8 +548,8 @@ phys_size_t get_effective_memsize(void)
 
 			/* Find the memory region runs the U-Boot */
 			if (start >= phys_sdram_1_start && start <= end1 &&
-			    (start <= CONFIG_SYS_TEXT_BASE &&
-			    end >= CONFIG_SYS_TEXT_BASE)) {
+			    (start <= CONFIG_TEXT_BASE &&
+			    end >= CONFIG_TEXT_BASE)) {
 				if ((end + 1) <=
 				    ((sc_faddr_t)phys_sdram_1_start +
 				    phys_sdram_1_size))
@@ -686,6 +694,19 @@ int dram_init_banksize(void)
 			}
 		}
 	}
+#ifdef CONFIG_VPU_SECURE_HEAP
+	// pass the seucre memory to linux
+	gd->bd->bi_dram[i].start = CONFIG_SECURE_HEAP_BASE;
+	gd->bd->bi_dram[i].size = CONFIG_SECURE_HEAP_SIZE;
+	dram_bank_sort(i);
+	i++;
+
+	gd->bd->bi_dram[i].start = CONFIG_VPU_BOOT_BASE;
+	gd->bd->bi_dram[i].size = CONFIG_VPU_BOOT_SIZE;
+	dram_bank_sort(i);
+	i++;
+#endif
+
 
 	/* If error, set to the default value */
 	if (!i) {

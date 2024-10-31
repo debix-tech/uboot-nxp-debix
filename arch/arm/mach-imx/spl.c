@@ -23,6 +23,7 @@
 #include <mmc.h>
 #include <u-boot/lz4.h>
 #include <image.h>
+#include <asm/sections.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -200,7 +201,7 @@ int g_dnl_get_board_bcd_device_number(int gcnum)
 
 #if defined(CONFIG_SPL_MMC)
 /* called from spl_mmc to see type of boot mode for storage (RAW or FAT) */
-u32 spl_mmc_boot_mode(const u32 boot_device)
+u32 spl_mmc_boot_mode(struct mmc *mmc, const u32 boot_device)
 {
 #if defined(CONFIG_MX7) || defined(CONFIG_IMX8M) || defined(CONFIG_IMX8)
 	switch (get_boot_device()) {
@@ -316,7 +317,10 @@ ulong board_spl_fit_size_align(ulong size)
 	 */
 
 	size = ALIGN(size, 0x1000);
-	size += CONFIG_CSF_SIZE;
+	size += 2 * CONFIG_CSF_SIZE;
+
+	if (size > CONFIG_SYS_BOOTM_LEN)
+		panic("spl: ERROR: image too big\n");
 
 	return size;
 }
@@ -334,7 +338,7 @@ void *board_spl_fit_buffer_addr(ulong fit_size, int sectors, int bl_len)
 	if (bl_len < 512)
 		bl_len = 512;
 
-	return  (void *)((CONFIG_SYS_TEXT_BASE - fit_size - bl_len -
+	return  (void *)((CONFIG_TEXT_BASE - fit_size - bl_len -
 			align_len) & ~align_len);
 }
 #endif
@@ -342,12 +346,47 @@ void *board_spl_fit_buffer_addr(ulong fit_size, int sectors, int bl_len)
 #if defined(CONFIG_MX6) && defined(CONFIG_SPL_OS_BOOT)
 int dram_init_banksize(void)
 {
-	gd->bd->bi_dram[0].start = CONFIG_SYS_SDRAM_BASE;
+	gd->bd->bi_dram[0].start = CFG_SYS_SDRAM_BASE;
 	gd->bd->bi_dram[0].size = imx_ddr_size();
 
 	return 0;
 }
 #endif
+
+#if IS_ENABLED(CONFIG_SPL_LOAD_FIT)
+static int spl_verify_fit_hash(const void *fit)
+{
+	unsigned long size;
+	u8 value[SHA256_SUM_LEN];
+	int value_len;
+	ulong fit_hash;
+
+#if CONFIG_IS_ENABLED(OF_CONTROL)
+	if (gd->fdt_blob && !fdt_check_header(gd->fdt_blob)) {
+		fit_hash = roundup((unsigned long)&_end +
+				     fdt_totalsize(gd->fdt_blob), 4) + 0x18000;
+	}
+#else
+	fit_hash = (unsigned long)&_end + 0x18000;
+#endif
+
+	size = fdt_totalsize(fit);
+
+	if (calculate_hash(fit, size, "sha256", value, &value_len)) {
+		printf("Unsupported hash algorithm\n");
+		return -1;
+	}
+
+	if (value_len != SHA256_SUM_LEN) {
+		printf("Bad hash value len\n");
+		return -1;
+	} else if (memcmp(value, (const void *)fit_hash, value_len) != 0) {
+		printf("Bad hash value\n");
+		return -1;
+	}
+
+	return 0;
+}
 
 /*
  * read the address where the IVT header must sit
@@ -362,6 +401,30 @@ void *spl_load_simple_fit_fix_load(const void *fit)
 	unsigned long offset;
 	unsigned long size;
 	u8 *tmp = (u8 *)fit;
+
+	if (IS_ENABLED(CONFIG_IMX_HAB)) {
+		if (IS_ENABLED(CONFIG_IMX_SPL_FIT_FDT_SIGNATURE)) {
+			u32 offset = ALIGN(fdt_totalsize(fit), 0x1000);
+
+			if (imx_hab_authenticate_image((uintptr_t)fit,
+						       offset + 2 * CSF_PAD_SIZE,
+						       offset + CSF_PAD_SIZE)) {
+#ifdef CONFIG_ANDROID_SUPPORT
+				printf("spl: ERROR:  FIT FDT authentication unsuccessful\n");
+				return NULL;
+#else
+				panic("spl: ERROR:  FIT FDT authentication unsuccessful\n");
+#endif
+			}
+		} else {
+			int ret = spl_verify_fit_hash(fit);
+
+			if (ret && imx_hab_is_enabled())
+				panic("spl: ERROR:  FIT hash verify unsuccessful\n");
+
+			debug("spl_verify_fit_hash %d\n", ret);
+		}
+	}
 
 	offset = ALIGN(fdt_totalsize(fit), 0x1000);
 	size = ALIGN(fdt_totalsize(fit), 4);
@@ -381,6 +444,7 @@ void *spl_load_simple_fit_fix_load(const void *fit)
 
 	return (void *)new;
 }
+#endif
 
 #if defined(CONFIG_IMX8MP) || defined(CONFIG_IMX8MN)
 int board_handle_rdc_config(void *fdt_addr, const char *config_name, void *dst_addr)
@@ -442,7 +506,7 @@ exit:
 #define LZ4_MAGIC_NUM     0x184D2204
 #endif
 
-void board_spl_fit_post_load(const void *fit, struct spl_image_info *spl_image)
+int board_spl_fit_post_load(const void *fit, struct spl_image_info *spl_image)
 {
 
 #ifdef CONFIG_IMX_TRUSTY_OS
@@ -460,7 +524,12 @@ void board_spl_fit_post_load(const void *fit, struct spl_image_info *spl_image)
 		if (imx_hab_authenticate_image((uintptr_t)fit,
 					       offset + IVT_SIZE + CSF_PAD_SIZE,
 					       offset)) {
+#ifdef CONFIG_ANDROID_SUPPORT
+			printf("spl: ERROR:  image authentication unsuccessful\n");
+			return -1;
+#else
 			panic("spl: ERROR:  image authentication unsuccessful\n");
+#endif
 		}
 	}
 #if defined(CONFIG_IMX8MP) || defined(CONFIG_IMX8MN)
@@ -480,13 +549,13 @@ void board_spl_fit_post_load(const void *fit, struct spl_image_info *spl_image)
                 tee_node = fit_image_get_node(fit, TEE_SUBNODE_NAME);
                 if (tee_node < 0) {
                         printf ("Can't find FIT subimage\n");
-                        return;
+                        return -1;
                 }
 
                 ret = fit_image_get_load(fit, tee_node, &load_addr);
                 if (ret) {
                         printf("Can't get image load address!\n");
-                        return;
+                        return -1;
                 }
 
                 if (*(u32*)load_addr == LZ4_MAGIC_NUM) {
@@ -495,7 +564,7 @@ void board_spl_fit_post_load(const void *fit, struct spl_image_info *spl_image)
                         ret = fit_image_get_data_size(fit, tee_node, &size);
                         if (ret < 0) {
                                 printf("Can't get size of image (err=%d)\n", ret);
-                                return;
+                                return -1;
                         }
 
                         memcpy(offset_addr,(void *)load_addr, size);
@@ -504,7 +573,7 @@ void board_spl_fit_post_load(const void *fit, struct spl_image_info *spl_image)
                         ret = ulz4fn((void *)offset_addr, size, (void *)load_addr, &dest_size);
                         if (ret) {
                                 printf("Uncompressed err :%d\n", ret);
-                                return;
+                                return -1;
                         }
 #if CONFIG_IS_ENABLED(LOAD_FIT) || CONFIG_IS_ENABLED(LOAD_FIT_FULL)
                         /* Modify the image size had recorded in FDT */
@@ -513,10 +582,11 @@ void board_spl_fit_post_load(const void *fit, struct spl_image_info *spl_image)
                 }
         }
 #endif
+	return 0;
 
 }
 
-#ifdef CONFIG_IMX_TRUSTY_OS
+#if defined(CONFIG_IMX_TRUSTY_OS) && !defined(CONFIG_IMX_MATTER_TRUSTY)
 int check_rollback_index(struct spl_image_info *spl_image, struct mmc *mmc);
 int check_rpmb_blob(struct mmc *mmc);
 

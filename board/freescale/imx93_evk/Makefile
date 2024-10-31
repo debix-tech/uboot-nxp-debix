@@ -11,6 +11,10 @@ obj-y += spl.o
 ifdef CONFIG_IMX9_LOW_DRIVE_MODE
 obj-$(CONFIG_IMX93_EVK_LPDDR4X) += lpddr4x_timing_ld.o
 else
-obj-$(CONFIG_IMX93_EVK_LPDDR4X) += lpddr4x_timing.o
+ifdef CONFIG_IMX9_DRAM_INLINE_ECC
+obj-$(CONFIG_IMX93_EVK_LPDDR4X) += lpddr4x_timing_ecc.o
+else
+obj-$(CONFIG_IMX93_EVK_LPDDR4X) += lpddr4x_timing.o lpddr4x_timing_1g_JSC.o lpddr4x_timing_2g_JSC.o
+endif
 endif
 endif

@@ -989,9 +989,6 @@ static int nxp_fspi_default_setup(struct nxp_fspi *f)
 	u32 reg;
 
 #if CONFIG_IS_ENABLED(CLK)
-	/* disable and unprepare clock to avoid glitch pass to controller */
-	nxp_fspi_clk_disable_unprep(f);
-
 	/* the default frequency, we will change it later if necessary. */
 	ret = clk_set_rate(&f->clk, 20000000);
 	if (ret < 0)
@@ -1060,6 +1057,13 @@ static int nxp_fspi_default_setup(struct nxp_fspi *f)
 	/* prefetch and no start address alignment limitation */
 	fspi_writel(f, FSPI_AHBCR_PREF_EN | FSPI_AHBCR_RDADDROPT,
 		    base + FSPI_AHBCR);
+
+	/* Reset the flashx control1 registers */
+	reg = FSPI_FLSHXCR1_TCSH(0x3) | FSPI_FLSHXCR1_TCSS(0x3);
+	fspi_writel(f, reg, base + FSPI_FLSHA1CR1);
+	fspi_writel(f, reg, base + FSPI_FLSHA2CR1);
+	fspi_writel(f, reg, base + FSPI_FLSHB1CR1);
+	fspi_writel(f, reg, base + FSPI_FLSHB2CR1);
 
 	/* AHB Read - Set lut sequence ID for all CS. */
 	fspi_writel(f, SEQID_AHB_LUT, base + FSPI_FLSHA1CR2);

@@ -225,6 +225,11 @@ const struct rproc_att hostmap[] = {
 	{ 0x80000000, 0x80000000, 0x60000000 }, /* DDRC */
 	{ /* sentinel */ }
 };
+
+const struct rproc_att *imx_bootaux_get_hostmap(void)
+{
+	return hostmap;
+}
 #endif
 
 #if !CONFIG_IS_ENABLED(SKIP_LOWLEVEL_INIT)
@@ -348,7 +353,8 @@ int arch_cpu_init(void)
 
 	init_csu();
 	/* Disable PDE bit of WMCR register */
-	imx_wdog_disable_powerdown();
+	if (!IS_ENABLED(CONFIG_IMX_WATCHDOG))
+		imx_wdog_disable_powerdown();
 
 	init_cpu_basic();
 
@@ -367,6 +373,14 @@ int arch_cpu_init(void)
 
 	return 0;
 }
+
+int arch_initr_trap(void)
+{
+	if (IS_ENABLED(CONFIG_IMX_WATCHDOG))
+		imx_wdog_disable_powerdown();
+
+	return 0;
+}
 #else
 int arch_cpu_init(void)
 {
@@ -379,7 +393,7 @@ int arch_cpu_init(void)
 #ifdef CONFIG_ARCH_MISC_INIT
 int arch_misc_init(void)
 {
-#if defined(CONFIG_SERIAL_TAG) || defined(CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG)
+#ifdef CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG
 	struct tag_serialnr serialnr;
 	char serial_string[0x20];
 
@@ -407,7 +421,7 @@ int arch_misc_init(void)
 }
 #endif
 
-#if defined(CONFIG_SERIAL_TAG) || defined(CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG)
+#ifdef CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG
 /*
  * OCOTP_TESTER
  * i.MX 7Solo Applications Processor Reference Manual, Rev. 0.1, 08/2016
@@ -490,7 +504,7 @@ int boot_mode_getprisec(void)
 void reset_misc(void)
 {
 #ifndef CONFIG_SPL_BUILD
-#if defined(CONFIG_VIDEO_MXS) && !defined(CONFIG_DM_VIDEO)
+#if defined(CONFIG_VIDEO_MXS) && !defined(CONFIG_VIDEO)
 	lcdif_power_down();
 #endif
 #endif

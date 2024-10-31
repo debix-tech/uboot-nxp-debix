@@ -112,6 +112,7 @@ void ddrphy_init_set_dfi_clk(unsigned int drate)
 		dram_disable_bypass();
 		break;
 	case 3733:
+	case 3732:
 		dram_pll_init(MHZ(933));
 		dram_disable_bypass();
 		break;
@@ -139,8 +140,16 @@ void ddrphy_init_set_dfi_clk(unsigned int drate)
 		dram_pll_init(MHZ(400));
 		dram_disable_bypass();
 		break;
+	case 1200:
+		dram_pll_init(MHZ(300));
+		dram_disable_bypass();
+		break;
 	case 1066:
 		dram_pll_init(MHZ(266));
+		dram_disable_bypass();
+		break;
+	case 800:
+		dram_pll_init(MHZ(200));
 		dram_disable_bypass();
 		break;
 	case 667:
@@ -167,6 +176,6 @@ void ddrphy_init_set_dfi_clk(unsigned int drate)
 	}
 }
 
-void ddrphy_init_read_msg_block(enum fw_type type)
+__weak void ddrphy_init_read_msg_block(enum fw_type type)
 {
 }

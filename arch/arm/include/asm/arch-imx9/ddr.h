@@ -10,33 +10,33 @@
 #include <asm/types.h>
 
 #define DDR_CTL_BASE			0x4E300000
-#define DDR_PHY_BASE 		   	0x4E100000
-#define DDRMIX_BLK_CTRL_BASE    0x4E010000
+#define DDR_PHY_BASE			0x4E100000
+#define DDRMIX_BLK_CTRL_BASE		0x4E010000
 
-#define REG_DDR_SDRAM_MD_CNTL			(DDR_CTL_BASE + 0x120)
-#define REG_DDR_CS0_BNDS        	    (DDR_CTL_BASE + 0x0)
-#define REG_DDR_CS1_BNDS        	    (DDR_CTL_BASE + 0x8)
-#define REG_DDRDSR_2        	          (DDR_CTL_BASE + 0xB24)
-#define REG_DDR_TIMING_CFG_0			(DDR_CTL_BASE + 0x104)
-#define REG_DDR_SDRAM_CFG        	      (DDR_CTL_BASE + 0x110)
-#define REG_DDR_SDRAM_CFG2        	      (DDR_CTL_BASE + 0x114)
-#define REG_DDR_TIMING_CFG_4			(DDR_CTL_BASE + 0x160)
-#define REG_DDR_DEBUG_19        	      (DDR_CTL_BASE + 0xF48)
-#define REG_DDR_SDRAM_CFG_3     	      (DDR_CTL_BASE + 0x260)
-#define REG_DDR_SDRAM_CFG_4     	      (DDR_CTL_BASE + 0x264)
-#define REG_DDR_SDRAM_MD_CNTL_2 	      (DDR_CTL_BASE + 0x270)
-#define REG_DDR_SDRAM_MPR4      	      (DDR_CTL_BASE + 0x28C)
-#define REG_DDR_SDRAM_MPR5      	      (DDR_CTL_BASE + 0x290)
+#define REG_DDR_SDRAM_MD_CNTL	(DDR_CTL_BASE + 0x120)
+#define REG_DDR_CS0_BNDS        (DDR_CTL_BASE + 0x0)
+#define REG_DDR_CS1_BNDS        (DDR_CTL_BASE + 0x8)
+#define REG_DDRDSR_2			(DDR_CTL_BASE + 0xB24)
+#define REG_DDR_TIMING_CFG_0	(DDR_CTL_BASE + 0x104)
+#define REG_DDR_SDRAM_CFG		(DDR_CTL_BASE + 0x110)
+#define REG_DDR_SDRAM_CFG2      (DDR_CTL_BASE + 0x114)
+#define REG_DDR_TIMING_CFG_4	(DDR_CTL_BASE + 0x160)
+#define REG_DDR_DEBUG_19		(DDR_CTL_BASE + 0xF48)
+#define REG_DDR_SDRAM_CFG_3     (DDR_CTL_BASE + 0x260)
+#define REG_DDR_SDRAM_CFG_4     (DDR_CTL_BASE + 0x264)
+#define REG_DDR_SDRAM_MD_CNTL_2 (DDR_CTL_BASE + 0x270)
+#define REG_DDR_SDRAM_MPR4      (DDR_CTL_BASE + 0x28C)
+#define REG_DDR_SDRAM_MPR5      (DDR_CTL_BASE + 0x290)
 
-#define REG_DDR_ERR_EN        	        (DDR_CTL_BASE + 0x1000)
+#define REG_DDR_ERR_EN        	(DDR_CTL_BASE + 0x1000)
 
-#define SRC_BASE_ADDR                     (0x44460000)
-#define SRC_DPHY_BASE_ADDR                (SRC_BASE_ADDR + 0x1400)
-#define REG_SRC_DPHY_SW_CTRL              (SRC_DPHY_BASE_ADDR + 0x20)
-#define REG_SRC_DPHY_SINGLE_RESET_SW_CTRL (SRC_DPHY_BASE_ADDR + 0x24)
+#define SRC_BASE_ADDR			(0x44460000)
+#define SRC_DPHY_BASE_ADDR		(SRC_BASE_ADDR + 0x1400)
+#define REG_SRC_DPHY_SW_CTRL		(SRC_DPHY_BASE_ADDR + 0x20)
+#define REG_SRC_DPHY_SINGLE_RESET_SW_CTRL	(SRC_DPHY_BASE_ADDR + 0x24)
 
-#define IP2APB_DDRPHY_IPS_BASE_ADDR(X)	(DDR_PHY_BASE + (X * 0x2000000))
-#define DDRPHY_MEM(X)			(DDR_PHY_BASE + (X * 0x2000000) + 0x50000)
+#define IP2APB_DDRPHY_IPS_BASE_ADDR(X)	(DDR_PHY_BASE + ((X) * 0x2000000))
+#define DDRPHY_MEM(X)			(DDR_PHY_BASE + ((X) * 0x2000000) + 0x50000)
 
 /* PHY State */
 enum pstate {
@@ -100,6 +100,35 @@ struct dram_timing_info {
 };
 
 extern struct dram_timing_info dram_timing;
+//John_gao add jsc ddr
+extern struct dram_timing_info dram_timing_jsc;
+extern struct dram_timing_info dram_timing_jsc2g;
+
+#if (defined(CONFIG_IMX_SNPS_DDR_PHY_QB_GEN) || defined(CONFIG_IMX_SNPS_DDR_PHY_QB))
+#define DDRPHY_QB_FSP_SIZE	3
+#define DDRPHY_QB_ERR_SIZE	6
+#define DDRPHY_QB_CSR_SIZE	1792
+#define DDRPHY_QB_FLAG_2D	BIT(0)	/* =1 if First boot used 2D training, =0 otherwise */
+struct ddrphy_qb_state {
+	uint32_t crc;
+	uint32_t flags;
+	uint32_t fsp[DDRPHY_QB_FSP_SIZE];
+	uint32_t err[DDRPHY_QB_ERR_SIZE];
+	uint32_t csr[DDRPHY_QB_CSR_SIZE];
+};
+#define DDRPHY_QB_STATE_SIZE \
+	(sizeof(uint32_t) * (1 + DDRPHY_QB_FSP_SIZE + DDRPHY_QB_ERR_SIZE + DDRPHY_QB_CSR_SIZE))
+
+extern struct ddrphy_qb_state qb_state;
+extern const uint32_t ddrphy_err_cfg[DDRPHY_QB_ERR_SIZE];
+
+#if defined(CONFIG_IMX_SNPS_DDR_PHY_QB_GEN)
+int ddrphy_qb_save(void);
+#endif
+#if defined(CONFIG_IMX_SNPS_DDR_PHY_QB)
+int ddr_cfg_phy_qb(struct dram_timing_info *timing_info, int fsp_id);
+#endif
+#endif
 
 void ddr_load_train_firmware(enum fw_type type);
 int ddr_init(struct dram_timing_info *timing_info);
@@ -120,7 +149,7 @@ void ddrphy_init_read_msg_block(enum fw_type type);
 
 void get_trained_CDD(unsigned int fsp);
 
-ulong ddrphy_addr_remap(uint32_t paddr_apb_from_ctlr);
+ulong ddrphy_addr_remap(u32 paddr_apb_from_ctlr);
 
 static inline void reg32_write(unsigned long addr, u32 val)
 {
@@ -143,6 +172,6 @@ static inline void reg32setbit(unsigned long addr, u32 bit)
 	reg32_read(IP2APB_DDRPHY_IPS_BASE_ADDR(0) + ddrphy_addr_remap(addr))
 
 extern struct dram_cfg_param ddrphy_trained_csr[];
-extern uint32_t ddrphy_trained_csr_num;
+extern u32 ddrphy_trained_csr_num;
 
 #endif

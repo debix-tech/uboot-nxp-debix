@@ -91,21 +91,21 @@ int board_eth_init(struct bd_info *bis)
 	struct memac_mdio_controller *reg;
 	int i, interface;
 	struct mii_dev *dev;
-	struct ccsr_gur *gur = (void *)(CONFIG_SYS_FSL_GUTS_ADDR);
+	struct ccsr_gur *gur = (void *)(CFG_SYS_FSL_GUTS_ADDR);
 	u32 srds_s1;
 
 	srds_s1 = in_le32(&gur->rcwsr[28]) &
 				FSL_CHASSIS3_RCWSR28_SRDS1_PRTCL_MASK;
 	srds_s1 >>= FSL_CHASSIS3_RCWSR28_SRDS1_PRTCL_SHIFT;
 
-	reg = (struct memac_mdio_controller *)CONFIG_SYS_FSL_WRIOP1_MDIO1;
+	reg = (struct memac_mdio_controller *)CFG_SYS_FSL_WRIOP1_MDIO1;
 	mdio_info.regs = reg;
 	mdio_info.name = DEFAULT_WRIOP_MDIO1_NAME;
 
 	/* Register the EMI 1 */
 	fm_memac_mdio_init(bis, &mdio_info);
 
-	reg = (struct memac_mdio_controller *)CONFIG_SYS_FSL_WRIOP1_MDIO2;
+	reg = (struct memac_mdio_controller *)CFG_SYS_FSL_WRIOP1_MDIO2;
 	mdio_info.regs = reg;
 	mdio_info.name = DEFAULT_WRIOP_MDIO2_NAME;
 
@@ -115,7 +115,7 @@ int board_eth_init(struct bd_info *bis)
 	dev = miiphy_get_dev_by_name(DEFAULT_WRIOP_MDIO2_NAME);
 
 	/* new LX2160A-RDB2 revC board uses phy-less 25G/40G interfaces */
-	if (get_board_rev() == 'C') {
+	if (get_board_rev() >= 'C') {
 		setup_eth_rev_c(srds_s1);
 		goto next;
 	}
@@ -321,7 +321,7 @@ int fdt_fixup_board_phy_revc(void *fdt)
 {
 	int ret;
 
-	if (get_board_rev() != 'C')
+	if (get_board_rev() < 'C')
 		return 0;
 
 	/* DPMACs 3,4 have their Aquantia PHYs at new addresses */

@@ -6,6 +6,7 @@
 
 #include <common.h>
 #include <command.h>
+#include <display_options.h>
 #include <timestamp.h>
 #include <version.h>
 #include <version_string.h>
@@ -14,17 +15,19 @@
 #include <asm/cb_sysinfo.h>
 #endif
 
-//John_gao add for uboot version by debix 
-#define Debix_C_VERSION " Debix Model C V0.0.1 "
-
+//John_gao add for uboot version by debix
+#define Debix_C_VERSION " Debix Model C V0.0.9 "
 #if 1
-#define U_BOOT_VERSION_STRING U_BOOT_VERSION Debix_C_VERSION " (" U_BOOT_DATE " - " \
-	U_BOOT_TIME " " U_BOOT_TZ ")" CONFIG_IDENT_STRING
+//#define U_BOOT_VERSION_STRING U_BOOT_VERSION Debix_C_VERSION " (" U_BOOT_DATE " - " \
+        U_BOOT_TIME " " U_BOOT_TZ ")" CONFIG_IDENT_STRING
+
+#define U_BOOT_VERSION_STRING Debix_C_VERSION " (" U_BOOT_DATE " - " U_BOOT_TIME ")"
 #else
+
+
 #define U_BOOT_VERSION_STRING U_BOOT_VERSION " (" U_BOOT_DATE " - " \
 	U_BOOT_TIME " " U_BOOT_TZ ")" CONFIG_IDENT_STRING
 #endif
-
 const char version_string[] = U_BOOT_VERSION_STRING;
 
 static int do_version(struct cmd_tbl *cmdtp, int flag, int argc,
