@@ -300,6 +300,8 @@ ifneq ($(wildcard $(srctree)/$(src)/logos/$(VENDOR).bmp),)
 LOGO_BMP= $(srctree)/$(src)/logos/$(VENDOR).bmp
 endif
 endif
+### John_gao add Debix 
+LOGO_BMP= $(srctree)/$(src)/logos/debix.bmp
 
 endif # !LOGO_BMP
 

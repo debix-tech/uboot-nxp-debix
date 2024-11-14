@@ -23,89 +23,8 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_gpio_led>;
 
-		status {
-			label = "yellow:status";
+		led-0 {
 			gpios = <&gpio3 16 GPIO_ACTIVE_HIGH>;
-			default-state = "on";
-		};
-		SPK_VDD5V_EN {
-			label = "SPK_VDD5V_EN";
-			gpios = <&pca9535_1 0 GPIO_ACTIVE_HIGH>;
-			default-state = "on";
-		};
-		VDD5V_EN {
-			label = "VDD5V_EN";
-			gpios = <&pca9535_1 8 GPIO_ACTIVE_HIGH>;
-			default-state = "on";
-		};
-
-		BB_VDD5V_EN {
-			label = "BB_VDD5V_EN";
-			gpios = <&pca9535_1 9 GPIO_ACTIVE_HIGH>;
-			default-state = "on";
-		};
-
-		BB_VDD3V3_EN {
-			label = "BB_VDD5V_EN";
-			gpios = <&pca9535_1 10 GPIO_ACTIVE_HIGH>;
-			default-state = "on";
-		};
-		SOM_VDD3V3_EN {
-			label = "SOM_VDD3V3_EN";
-			gpios = <&pca9535_1 11 GPIO_ACTIVE_HIGH>;
-			default-state = "on";
-		};
-
-		SOM_VDD1V8_EN {
-			label = "SOM_VDD1V8_EN";
-			gpios = <&pca9535_1 12 GPIO_ACTIVE_HIGH>;
-			default-state = "on";
-		};
-
-		CSI1_VDD1V8_EN {
-			label = "CSI1_VDD1V8_EN";
-			gpios = <&pca9535_1 13 GPIO_ACTIVE_HIGH>;
-			default-state = "on";
-		};
-		CSI1_VDD3V3_EN {
-			label = "CSI1_VDD3V3_EN";
-			gpios = <&pca9535_1 14 GPIO_ACTIVE_HIGH>;
-			default-state = "on";
-		};
-
-		DOUT_1 {
-			label = "DOUT_1";
-			gpios = <&pca9535_2 0 GPIO_ACTIVE_HIGH>;
-			default-state = "on";
-		};
-		DOUT_2 {
-			label = "DOUT_2";
-			gpios = <&pca9535_2 1 GPIO_ACTIVE_HIGH>;
-			default-state = "on";
-		};
-		DOUT_3 {
-			label = "DOUT_3";
-			gpios = <&pca9535_2 2 GPIO_ACTIVE_HIGH>;
-			default-state = "on";
-		};
-		DOUT_4 {
-			label = "DOUT_4";
-			gpios = <&pca9535_2 3 GPIO_ACTIVE_HIGH>;
-			default-state = "on";
-		};
-		USB30_PWR_EN {
-			label = "USB30_PWR_EN";
-			gpios = <&pca9535_2 12 GPIO_ACTIVE_HIGH>;
-			default-state = "on";
-		};
-		USB30_OTG_EN {
-			label = "USB30_OTG_EN";
-			gpios = <&pca9535_2 13 GPIO_ACTIVE_HIGH>;
-			default-state = "on";
-		};
-		USB20_PWR_EN {
-			label = "USB20_PWR_EN";
-			gpios = <&pca9535_2 14 GPIO_ACTIVE_HIGH>;
 			default-state = "on";
 		};
 	};
@@ -115,7 +34,7 @@
 		reg = <0x0 0x40000000 0 0xc0000000>,
 		      <0x1 0x00000000 0 0xc0000000>;
 	};
-#if 0
+
 	pcie0_refclk: pcie0-refclk {
 		compatible = "fixed-clock";
 			#clock-cells = <0>;
@@ -140,7 +59,7 @@
 		pinctrl-0 = <&pinctrl_flexcan2_reg>;
 		regulator-min-microvolt = <3300000>;
 		regulator-max-microvolt = <3300000>;
-		gpio = <&gpio4 27 GPIO_ACTIVE_HIGH>;
+		gpio = <&gpio5 5 GPIO_ACTIVE_HIGH>;
 		enable-active-high;
 	};
 
@@ -155,7 +74,7 @@
 		enable-active-high;
 		regulator-always-on;
 	};
-#endif
+
 	reg_usdhc2_vmmc: regulator-usdhc2 {
 		compatible = "regulator-fixed";
 		pinctrl-names = "default";
@@ -165,8 +84,6 @@
 		regulator-max-microvolt = <3300000>;
 		gpio = <&gpio2 19 GPIO_ACTIVE_HIGH>;
 		enable-active-high;
-		startup-delay-us = <100>;
-		off-on-delay-us = <12000>;
 	};
 
 	dsi_host: dsi-host {
@@ -186,7 +103,7 @@
 					 */
 		panel-width-mm = <68>;
 		panel-height-mm = <121>;
-		status = "disabled";
+		status = "okay";
 
 		port {
 			rm67191_from_dsim: endpoint {
@@ -214,7 +131,7 @@
 &flexspi {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexspi0>;
-	status = "okay";
+	status = "disabled";
 
 	flash0: flash@0 {
 		reg = <0>;
@@ -222,7 +139,7 @@
 		#size-cells = <1>;
 		compatible = "jedec,spi-nor";
 		spi-max-frequency = <80000000>;
-		spi-tx-bus-width = <4>;
+		spi-tx-bus-width = <1>;
 		spi-rx-bus-width = <4>;
 	};
 };
@@ -258,17 +175,14 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 
-		ethphy0: ethernet-phy@0 {
+		ethphy0: ethernet-phy@1 {
 			compatible = "ethernet-phy-ieee802.3-c22";
-			reg = <0>;
-			at803x,led-act-blind-workaround;
-			at803x,eee-disabled;
-			at803x,vddio-1p8v;
-			//eee-broken-1000t;
-			//reset-gpios = <&gpio4 22 GPIO_ACTIVE_LOW>;
-			//reset-assert-us = <10000>;
-			//reset-deassert-us = <80000>;
-			//realtek,clkout-disable;
+			reg = <1>;
+			eee-broken-1000t;
+			reset-gpios = <&gpio4 22 GPIO_ACTIVE_LOW>;
+			reset-assert-us = <10000>;
+			reset-deassert-us = <80000>;
+			realtek,clkout-disable;
 		};
 	};
 
@@ -350,18 +264,15 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 
-		ethphy1: ethernet-phy@0 {
+		ethphy1: ethernet-phy@1 {
 			compatible = "ethernet-phy-ieee802.3-c22";
-			reg = <0>;
-			at803x,led-act-blind-workaround;
-			at803x,eee-disabled;
-			at803x,vddio-1p8v;
-			//eee-broken-1000t;
-			//reset-gpios = <&gpio4 2 GPIO_ACTIVE_LOW>;
-			//reset-assert-us = <10000>;
-			//reset-deassert-us = <80000>;
-			//realtek,aldps-enable;
-			//realtek,clkout-disable;
+			reg = <1>;
+			eee-broken-1000t;
+			reset-gpios = <&gpio4 2 GPIO_ACTIVE_LOW>;
+			reset-assert-us = <10000>;
+			reset-deassert-us = <80000>;
+			realtek,aldps-enable;
+			realtek,clkout-disable;
 		};
 	};
 };
@@ -369,14 +280,14 @@
 &flexcan1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan1>;
-	//xceiver-supply = <&reg_can1_stby>;
-	status = "okay";
+	xceiver-supply = <&reg_can1_stby>;
+	status = "disabled";
 };
 
 &flexcan2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan2>;
-	//xceiver-supply = <&reg_can2_stby>;
+	xceiver-supply = <&reg_can2_stby>;
 	pinctrl-assert-gpios = <&pca6416 3 GPIO_ACTIVE_HIGH>;
 	status = "disabled";/* can2 pin conflict with pdm */
 };
@@ -494,7 +405,7 @@
 	scl-gpios = <&gpio5 16 GPIO_ACTIVE_HIGH>;
 	sda-gpios = <&gpio5 17 GPIO_ACTIVE_HIGH>;
 	status = "okay";
-#if 0
+
 	adv_bridge: adv7535@3d {
 		compatible = "adi,adv7535";
 		reg = <0x3d>;
@@ -508,7 +419,7 @@
 			};
 		};
 	};
-
+#if 0
 	ptn5110: tcpc@50 {
 		compatible = "nxp,ptn5110";
 		pinctrl-names = "default";
@@ -589,32 +500,7 @@
 			"EXP_P1_7";
 	};
 };
-&i2c4 {
-	clock-frequency = <100000>;
-	pinctrl-names = "default","gpio";
-	pinctrl-0 = <&pinctrl_i2c4>;
-	pinctrl-1 = <&pinctrl_i2c4_gpio>;
-	scl-gpios = <&gpio5 20 GPIO_ACTIVE_HIGH>;
-	sda-gpios = <&gpio5 21 GPIO_ACTIVE_HIGH>;
 
-	status = "okay";
-	
-
-	pca9535_1: pca9535_1@20 {
-	   compatible = "nxp,pca9535";
-	   reg = <0x20>;
-	   gpio-controller;
-	   #gpio-cells = <0x02>;
-	};
-	pca9535_2: pca9535_2@23 {
-	   compatible = "nxp,pca9535";
-	   reg = <0x23>;
-	   gpio-controller;
-	   #gpio-cells = <0x02>;
-	};
-};
-
-#if 0
 /* I2C on expansion connector J22. */
 &i2c5 {
 	clock-frequency = <100000>; /* Lower clock speed for external bus. */
@@ -629,29 +515,29 @@
 	 * in pca6416 node).
 	 */
 };
-#endif
+
 &lcdif1 {
 	status = "okay";
 };
 
 &mipi_dsi {
-	status = "disabled";
+	status = "okay";
+
 	ports {
-#if 0
 		port@1 {
 			dsim_to_adv7535: endpoint {
 				remote-endpoint = <&adv7535_from_dsim>;
 			};
 		};
-#endif
-		port@1 {
+
+		port@2 {
 			dsim_to_rm67191: endpoint {
 				remote-endpoint = <&rm67191_from_dsim>;
 			};
 		};
 	};
 };
-#if 0
+
 &pcie_phy {
 	fsl,refclk-pad-mode = <IMX8_PCIE_REFCLK_PAD_INPUT>;
 	clocks = <&pcie0_refclk>;
@@ -673,7 +559,7 @@
 	vpcie-supply = <&reg_pcie0>;
 	status = "okay";
 };
-#endif
+
 &snvs_pwrkey {
 	status = "okay";
 };
@@ -702,13 +588,12 @@
 };
 
 &usb_dwc3_0 {
-	//dr_mode = "otg";
-	dr_mode = "device";
+	dr_mode = "otg";
 	hnp-disable;
 	srp-disable;
 	adp-disable;
 	usb-role-switch;
-//	role-switch-default-mode = "none";
+	role-switch-default-mode = "none";
 	snps,dis-u1-entry-quirk;
 	snps,dis-u2-entry-quirk;
 	status = "disabled";
@@ -735,7 +620,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usb1_vbus>;
 	dr_mode = "host";
-	status = "okay";
+	status = "disabled";
 };
 
 &usdhc2 {
@@ -787,7 +672,7 @@
 			MX8MP_IOMUXC_ENET_TD3__ENET_QOS_RGMII_TD3			0x16
 			MX8MP_IOMUXC_ENET_TX_CTL__ENET_QOS_RGMII_TX_CTL			0x16
 			MX8MP_IOMUXC_ENET_TXC__CCM_ENET_QOS_CLOCK_GENERATE_TX_CLK	0x16
-			MX8MP_IOMUXC_SAI1_TXD6__GPIO4_IO18				0x10
+			MX8MP_IOMUXC_SAI2_RXC__GPIO4_IO22				0x10
 		>;
 	};
 
@@ -807,35 +692,33 @@
 			MX8MP_IOMUXC_SAI1_TXD3__ENET1_RGMII_TD3		0x16
 			MX8MP_IOMUXC_SAI1_TXD4__ENET1_RGMII_TX_CTL	0x16
 			MX8MP_IOMUXC_SAI1_TXD5__ENET1_RGMII_TXC		0x16
-			MX8MP_IOMUXC_SAI1_RXD1__ENET1_1588_EVENT1_OUT   0x1f
-			MX8MP_IOMUXC_SAI1_RXD0__ENET1_1588_EVENT1_IN    0x1f
-			MX8MP_IOMUXC_SAI1_TXD7__GPIO4_IO19		0x19
+			MX8MP_IOMUXC_SAI1_RXD0__GPIO4_IO02		0x10
 		>;
 	};
 
 	pinctrl_flexcan1: flexcan1grp {
 		fsl,pins = <
-			MX8MP_IOMUXC_SPDIF_RX__CAN1_RX          0x154
-			MX8MP_IOMUXC_SPDIF_TX__CAN1_TX          0x154
+		//	MX8MP_IOMUXC_SPDIF_RX__CAN1_RX          0x154
+		//	MX8MP_IOMUXC_SPDIF_TX__CAN1_TX          0x154
 		>;
 	};
 
 	pinctrl_flexcan2: flexcan2grp {
 		fsl,pins = <
-			MX8MP_IOMUXC_SAI5_MCLK__CAN2_RX         0x154
+			MX8MP_IOMUXC_SAI2_MCLK__CAN2_RX         0x154
 			MX8MP_IOMUXC_SAI5_RXD3__CAN2_TX         0x154
 		>;
 	};
 
 	pinctrl_flexcan1_reg: flexcan1reggrp {
 		fsl,pins = <
-			MX8MP_IOMUXC_SPDIF_EXT_CLK__GPIO5_IO05  0x154   /* CAN1_STBY */
+			//MX8MP_IOMUXC_SPDIF_EXT_CLK__GPIO5_IO05  0x154   /* CAN1_STBY */
 		>;
 	};
 
 	pinctrl_flexcan2_reg: flexcan2reggrp {
 		fsl,pins = <
-			MX8MP_IOMUXC_SAI2_MCLK__GPIO4_IO27      0x154   /* CAN2_STBY */
+			MX8MP_IOMUXC_SPDIF_EXT_CLK__GPIO5_IO05      0x154   /* CAN2_STBY */
 		>;
 	};
 
@@ -874,12 +757,6 @@
 		fsl,pins = <
 			MX8MP_IOMUXC_I2C3_SCL__I2C3_SCL		0x400001c2
 			MX8MP_IOMUXC_I2C3_SDA__I2C3_SDA		0x400001c2
-		>;
-	};
-	pinctrl_i2c4: i2c4grp {
-		fsl,pins = <
-			MX8MP_IOMUXC_I2C4_SCL__I2C4_SCL		0x400001c3
-			MX8MP_IOMUXC_I2C4_SDA__I2C4_SDA		0x400001c3
 		>;
 	};
 
@@ -948,12 +825,6 @@
 			MX8MP_IOMUXC_I2C3_SDA__GPIO5_IO19        	0x1c3
 		>;
 	};
-	pinctrl_i2c4_gpio: i2c4grp-gpio {
-		fsl,pins = <
-			MX8MP_IOMUXC_I2C4_SCL__GPIO5_IO20        	0x1c3
-			MX8MP_IOMUXC_I2C4_SDA__GPIO5_IO21        	0x1c3
-		>;
-	};
 
 	pinctrl_typec: typec1grp {
 		fsl,pins = <
@@ -969,13 +840,14 @@
 
 	pinctrl_uart2: uart2grp {
 		fsl,pins = <
-			MX8MP_IOMUXC_UART2_RXD__UART2_DCE_RX	0x140
-			MX8MP_IOMUXC_UART2_TXD__UART2_DCE_TX	0x140
+			MX8MP_IOMUXC_UART2_RXD__UART2_DCE_RX	0x14f
+			MX8MP_IOMUXC_UART2_TXD__UART2_DCE_TX	0x14f
 		>;
 	};
 
 	pinctrl_usb1_vbus: usb1grp {
 		fsl,pins = <
+			//MX8MP_IOMUXC_GPIO1_IO14__USB2_PWR		0x10
 			MX8MP_IOMUXC_SAI2_TXC__GPIO4_IO25	 0x19 /*rst*/
 			MX8MP_IOMUXC_SAI2_TXD0__GPIO4_IO26	0x19  /*pwd*/
 		>;
