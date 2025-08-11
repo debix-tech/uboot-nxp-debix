@@ -30,10 +30,8 @@
 
 DECLARE_GLOBAL_DATA_PTR;
 
-#define UART_PAD_CTRL	(PAD_CTL_DSE6 | PAD_CTL_FSEL1 | PAD_CTL_PUE | PAD_CTL_PE) //John_gao add for uart put up 
+#define UART_PAD_CTRL	(PAD_CTL_DSE6 | PAD_CTL_FSEL1 | PAD_CTL_PUE | PAD_CTL_PE)
 #define WDOG_PAD_CTRL	(PAD_CTL_DSE6 | PAD_CTL_ODE | PAD_CTL_PUE | PAD_CTL_PE)
-
-
 
 static iomux_v3_cfg_t const uart_pads[] = {
 	MX8MP_PAD_UART2_RXD__UART2_DCE_RX | MUX_PAD_CTRL(UART_PAD_CTRL),
@@ -501,12 +499,72 @@ int board_phy_config(struct phy_device *phydev)
 }
 #endif
 
+//John_gao pca9535 
+static int setup_pca9535(uint8_t i2c_bus, uint8_t addr){
+	printf("start pca9535\n");
+	struct udevice *bus;
+	struct udevice *i2c_dev = NULL;
+	int ret;
+	uint8_t valb;
+	
+
+	ret = uclass_get_device_by_seq(UCLASS_I2C, i2c_bus, &bus);
+	if (ret) {
+		printf("%s: Can't find bus\n", __func__);
+		return -EINVAL;
+	}
+
+	ret = dm_i2c_probe(bus, addr, 0, &i2c_dev);
+	if (ret) {
+		printf("%s: Can't find device id=0x%x\n",
+			__func__, addr);
+		return -ENODEV;
+	}
+	valb = 0x0;
+	ret = dm_i2c_write(i2c_dev, 0x6, (const uint8_t *)&valb, 1);
+	if (ret) {
+		printf("%s dm_i2c_write 0x6(0xff) failed, err %d\n", __func__, ret);
+		return -EIO;
+	}
+	valb = 0x0;
+	ret = dm_i2c_write(i2c_dev, 0x7, (const uint8_t *)&valb, 1);
+	if (ret) {
+		printf("%s dm_i2c_write 0x7(0xff) failed, err %d\n", __func__, ret);
+		return -EIO;
+	}
+
+	valb = 0xff;
+	ret = dm_i2c_write(i2c_dev, 0x2, (const uint8_t *)&valb, 1);
+	if (ret) {
+		printf("%s dm_i2c_write 0x2(0xff) failed, err %d\n", __func__, ret);
+		return -EIO;
+	}
+	ret = dm_i2c_read(i2c_dev, 0x2, &valb, 1);
+	printf("addr(%d) reg(0x2) val(0x%x)\n", addr, valb);
+
+	valb = 0xff;
+	ret = dm_i2c_write(i2c_dev, 0x3, (const uint8_t *)&valb, 1);
+	if (ret) {
+		printf("%s dm_i2c_write 0x3(0xff) failed, err %d\n", __func__, ret);
+		return -EIO;
+	}
+
+	ret = dm_i2c_read(i2c_dev, 0x3, &valb, 1);
+	printf("addr(%d) reg(0x3) val(0x%x)\n", addr, valb);
+}
+
+
+
 int board_init(void)
 {
 #ifdef CONFIG_USB_TCPC
 	setup_typec();
 #endif
 	setup_led();
+//John_gao pca9535 
+setup_pca9535(3,0x20);
+//setup_pca9535(3,0x23);
+
 #ifdef CONFIG_FEC_MXC
 	setup_fec();
 #endif
