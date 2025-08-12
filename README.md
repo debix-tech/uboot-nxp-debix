@@ -2,31 +2,23 @@
 
 ### System SDK Download
 
-- Yocto-Linux 6.6.23_2.0.0
+- Yocto-Linux 6.12.3_1.0.0
   https://www.nxp.com/design/software/embedded-software/i-mx-software/embedded-linux-for-i-mx-applications-processors:IMXLINUX?
 
 ### Modify sources/meta-imx/meta-bsp/recipes-bsp/u-boot/u-boot-imx_2024.04.bb
 
 ```shell
 UBOOT_SRC ?= "git://github.com/debix-tech/uboot-nxp-debix;protocol=https"
-SRCBRANCH = "lf_v2024.04-debix_model_ab_2gbddr"
+SRCBRANCH = "yocto_L6.12.3-debix_model_ab_2gbddr"
 SRCREV = " ... commit id ... "
 ```
 
 `SRCREV` can be obtained through the commit on git hub or through the `git log` command:
 
 ```shell
-ljm@polyhex:~/workstation/Github/uboot-nxp-debix$ git checkout lf_v2024.04-debix_model_ab_2gbdd
-Already on 'lf_v2024.04_Model_AB_2GBDDR'
-Your branch is up to date with 'origin/lf_v2024.04_Model_AB_2GBDDR'.
-
-ljm@polyhex:~/workstation/Github/uboot-nxp-debix$ git log 
-commit 32a28bda1e7f995703d828cf4891f86c905b4232 (HEAD -> lf_v2024.04-debix_model_ab_2gbddr, origin/lf_v2024.04_Model_AB_2GBDDR, origin/lf_v2024.04-debix_model_ab_2gbddr, lf_v2024.04_Model_AB_2GBDDR)
-Author: cloudesteem <rd@cloudesteem.cn>
-Date:   Tue Oct 22 10:17:00 2024 +0000
-
-    Debix_Model_AB V1.0.3
-    set version to cmdline
+debix@polyhex:~/workstation/Github/uboot-nxp-debix$ git checkout yocto_L6.12.3-debix_model_ab_2gbddr
+Already on 'yocto_L6.12.3-debix_model_ab_2gbddr'
+Your branch is up to date with 'origin/yocto_L6.12.3-debix_model_ab_2gbddr'.
 
 ```
 

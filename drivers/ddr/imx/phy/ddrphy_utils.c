@@ -117,7 +117,7 @@ void ddrphy_init_set_dfi_clk(unsigned int drate)
 		dram_pll_init(MHZ(933));
 		dram_disable_bypass();
 		break;
-		//John_gao 1860M
+	//John_gao 1860M
 	case 3720:
 		dram_pll_init(MHZ(930));
 		dram_disable_bypass();
@@ -135,13 +135,13 @@ void ddrphy_init_set_dfi_clk(unsigned int drate)
 		dram_pll_init(MHZ(800));
 		dram_disable_bypass();
 		break;
-	case 3000:
-		dram_pll_init(MHZ(750));
-		dram_disable_bypass();
-		break;
 	//John_gao 1578M
 	case 3156:
 		dram_pll_init(MHZ(789));
+		dram_disable_bypass();
+		break;
+	case 3000:
+		dram_pll_init(MHZ(750));
 		dram_disable_bypass();
 		break;
 	case 2800:
