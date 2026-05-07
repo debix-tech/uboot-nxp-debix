@@ -12,6 +12,12 @@ config ANDROID_BOOT_IMAGE
 	  This enables support for booting images which use the Android
 	  image format header.
 
+config Debix_VERSION
+       string "Debix Version set"
+       default "V1.0.0"
+       help
+         Debix Version.
+
 config TIMESTAMP
 	bool "Show image date and time when displaying image information"
 	default y if CMD_DATE

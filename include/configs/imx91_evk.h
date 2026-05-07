@@ -18,8 +18,12 @@
 
 #define CFG_SYS_SDRAM_BASE	0x80000000
 #define PHYS_SDRAM		0x80000000
-#define PHYS_SDRAM_SIZE		0x80000000 /* 2GB DDR */
+#define PHYS_SDRAM_SIZE		0x40000000 /* 1GB DDR */
 
 #define WDOG_BASE_ADDR		WDG3_BASE_ADDR
+
+/* John_gao set env config */
+#define CFG_EXTRA_ENV_SETTINGS          \
+	"debix_version=" CONFIG_Debix_VERSION "\0"
 
 #endif

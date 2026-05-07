@@ -5,6 +5,8 @@
 #
 # Normal rules (sorted alphabetically)
 #
+dts/upstream/src/arm64/capsule_esl_file
+arch/arm/dts/capsule_esl_file
 .*
 !.checkpatch.conf
 *.a

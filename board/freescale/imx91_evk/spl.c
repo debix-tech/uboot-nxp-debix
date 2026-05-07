@@ -54,13 +54,24 @@ void spl_board_init(void)
 extern struct dram_timing_info dram_timing_1600mts;
 void spl_dram_init(void)
 {
-	struct dram_timing_info *ptiming = &dram_timing;
+	int ret ;
+	printk("Start Init DDR\n");
+	ret = ddr_init(&dram_timing);
+	//try JSC ddr 2G
+	if(ret) {
+	    printf("try jsc 2G\n");
+	    ret = ddr_init(&dram_timing_jsc2g);
+	}
+	//try JSC ddr 1G
+	if(ret) {
+	    printf("try jsc 1G\n");
+	    ret = ddr_init(&dram_timing_jsc);
+	}
 
-	if (is_voltage_mode(VOLT_LOW_DRIVE))
-		ptiming = &dram_timing_1600mts;
-
-	printf("DDR: %uMTS\n", ptiming->fsp_msg[0].drate);
-	ddr_init(ptiming);
+	if(ret){
+		//John_gao add for ddr err set to reset
+		reset_cpu();
+	}
 }
 
 #if CONFIG_IS_ENABLED(DM_PMIC_PCA9450)

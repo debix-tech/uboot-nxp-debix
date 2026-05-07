@@ -46,7 +46,7 @@
 
 	dsi_host: dsi-host {
 		compatible = "synopsys,dw-mipi-dsi";
-		status = "okay";
+		status = "disabled";
 	};
 
 	rm67199_panel {
@@ -59,7 +59,7 @@
 					 */
 		width-mm = <68>;
 		height-mm = <121>;
-		status = "okay";
+		status = "disabled";
 
 		port {
 			panel_in: endpoint {
@@ -203,7 +203,7 @@
 		reg = <0x3d>;
 		adi,addr-cec = <0x3c>;
 		adi,dsi-lanes = <4>;
-		status = "okay";
+		status = "disabled";
 
 		port {
 			adv7535_to_dsi: endpoint {
@@ -346,9 +346,9 @@
 	bootph-pre-ram;
 };
 
-&pinctrl_lpi2c3 {
-	bootph-pre-ram;
-};
+//&pinctrl_lpi2c3 {
+//	bootph-pre-ram;
+//};
 
 &usbotg1 {
 	status = "okay";
@@ -414,15 +414,15 @@
 	assigned-clocks = <&clk IMX93_CLK_MEDIA_AXI>, <&clk IMX93_CLK_MEDIA_APB>;
 	assigned-clock-parents = <&clk IMX93_CLK_SYS_PLL_PFD1>, <&clk IMX93_CLK_SYS_PLL_PFD1_DIV2>;
 	assigned-clock-rates = <400000000>, <133333334>;
-	status = "okay";
+	status = "disabled";
 };
 
 &dphy {
-	status = "okay";
+	status = "disabled";
 };
 
 &dsi {
-	status = "okay";
+	status = "disabled";
 
 	ports {
 		port@1 {
