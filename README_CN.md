@@ -1,11 +1,15 @@
 [English](./README.md) | [简体中文](./README_CN.md)
 
-### System SDK Download
+### 系统SDK下载
 
 - Yocto-Linux 6.12.49_2.2.0
   https://www.nxp.com/design/software/embedded-software/i-mx-software/embedded-linux-for-i-mx-applications-processors:IMXLINUX?
+  
+  
 
-### Modify sources/meta-imx/meta-imx-bsp/recipes-bsp/u-boot/u-boot-imx-common_2025.04.inc
+> 下面是关于如何在yocto工程下，编译uboot
+
+### 修改sources/meta-imx/meta-imx-bsp/recipes-bsp/u-boot/u-boot-imx-common_2025.04.inc
 
 ```shell
 UBOOT_SRC ?= "git://github.com/debix-tech/uboot-nxp-debix;protocol=https"
@@ -13,7 +17,7 @@ SRCBRANCH = "lf_v2025.04-yocto-L6.12.49-2.2.0-debix-emb-13-a1"
 SRCREV = " ... commit id ... "
 ```
 
-`SRCREV` can be obtained through the commit on git hub or through the `git log` command:
+`SRCREV`可以通过git hub上面的commit获取或者通过`git log`命令获取:
 
 ```shell
 debix@polyhex:$ git checkout sources/meta-imx/meta-imx-bsp/recipes-bsp/u-boot/u-boot-imx-common_2025.04.inc
@@ -27,7 +31,7 @@ debix@polyhex:$ git log
 
 
 ```
-### Build uboot
+### 编译uboot
 
 ```shell
 #build imx93 uboot
@@ -43,13 +47,13 @@ bitbake -c deploy -f -v imx-boot
 ```
 
 
-
-uboot bin file: 
+生成的uboot bin file路径: 
 `imx93/tmp/deploy/images/imx93-11x11-lpddr4x-evk/imx-boot-imx93-11x11-lpddr4x-evk-sd.bin-flash_singleboot`
 `imx93/tmp/deploy/images/imx91-11x11-lpddr4x-evk/imx-boot-imx91-11x11-lpddr4x-evk-sd.bin-flash_singleboot`
 
-### Use ubuntu dd command write to device
+### 使用`dd`命令去烧录
 
 ```shell
 sudo dd if=imx-boot-imx93-11x11-lpddr4x-evk-sd.bin-flash_singleboot of=/dev/sdx bs=1k seek=32 conv=fsync
 ```
+
