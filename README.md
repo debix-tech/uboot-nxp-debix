@@ -9,7 +9,7 @@
 
 ```shell
 UBOOT_SRC ?= "git://github.com/debix-tech/uboot-nxp-debix;protocol=https"
-SRCBRANCH = "lf_v2025.04-yocto-L6.12.49-2.2.0-debix-emb-13-a1"
+SRCBRANCH = "lf_v2025.04-yocto-L6.12.49-2.2.0-debix-bmb-13-a1"
 SRCREV = " ... commit id ... "
 ```
 
@@ -19,7 +19,7 @@ SRCREV = " ... commit id ... "
 debix@polyhex:$ git checkout sources/meta-imx/meta-imx-bsp/recipes-bsp/u-boot/u-boot-imx-common_2025.04.inc
 debix@polyhex:$ git branch
   lf_v2024.04-debix_model_ab_2gbddr
-* lf_v2025.04-yocto-L6.12.49-2.2.0-debix-emb-13-a1
+* lf_v2025.04-yocto-L6.12.49-2.2.0-debix-bmb-13-a1
   yocto_L6.12.3-debix_model_ab_2gbddr
 
 # show commit id
