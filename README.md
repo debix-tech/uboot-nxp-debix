@@ -9,20 +9,20 @@
 
 ```shell
 UBOOT_SRC ?= "git://github.com/debix-tech/uboot-nxp-debix;protocol=https"
-SRCBRANCH = "yocto_L6.12.3-debix_model_ab_2gbddr"
+SRCBRANCH = "lf_v2024.04-yocto_L6.12.3-debix_model_ab_4gbddr"
 SRCREV = " ... commit id ... "
 ```
 
 `SRCREV` can be obtained through the commit on git hub or through the `git log` command:
 
 ```shell
-debix@polyhex:~/workstation/Github/uboot-nxp-debix$ git checkout yocto_L6.12.3-debix_model_ab_2gbddr
+debix@polyhex:~/workstation/Github/uboot-nxp-debix$ git checkout lf_v2024.04-yocto_L6.12.3-debix_model_ab_4gbddr
 Already on 'yocto_L6.12.3-debix_model_ab_2gbddr'
-Your branch is up to date with 'origin/yocto_L6.12.3-debix_model_ab_2gbddr'.
+Your branch is up to date with 'origin/lf_v2024.04-yocto_L6.12.3-debix_model_ab_4gbddr'.
 
 ```
 
-`32a28bda1e7f995703d828cf4891f86c905b4232` is the commit id
+`666557f2d6dafab3725a6bcc6c744678b4326dc2` is the commit id
 
 ### Build uboot
 
