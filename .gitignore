@@ -5,6 +5,7 @@
 #
 # Normal rules (sorted alphabetically)
 #
+capsule_esl_file
 .*
 !.checkpatch.conf
 *.a

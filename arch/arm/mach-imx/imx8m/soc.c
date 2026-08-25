@@ -204,14 +204,238 @@ static struct mm_region imx8m_mem_map[] = {
 	}
 };
 
+static struct mm_region imx8m_mem_map_4gb[] = {
+	{
+		/* ROM */
+		.virt = 0x0UL,
+		.phys = 0x0UL,
+		.size = 0x100000UL,
+		.attrs = PTE_BLOCK_MEMTYPE(MT_NORMAL) |
+			 PTE_BLOCK_OUTER_SHARE
+	}, {
+		/* CAAM */
+		.virt = 0x100000UL,
+		.phys = 0x100000UL,
+		.size = 0x8000UL,
+		.attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRNE) |
+			 PTE_BLOCK_NON_SHARE |
+			 PTE_BLOCK_PXN | PTE_BLOCK_UXN
+	}, {
+		/* OCRAM_S */
+		.virt = 0x180000UL,
+		.phys = 0x180000UL,
+		.size = 0x8000UL,
+		.attrs = PTE_BLOCK_MEMTYPE(MT_NORMAL) |
+			 PTE_BLOCK_OUTER_SHARE | PTE_MAP_NS
+	}, {
+		/* TCM */
+		.virt = 0x7C0000UL,
+		.phys = 0x7C0000UL,
+		.size = 0x80000UL,
+		.attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRNE) |
+			 PTE_BLOCK_NON_SHARE |
+			 PTE_BLOCK_PXN | PTE_BLOCK_UXN | PTE_MAP_NS
+	}, {
+		/* OCRAM */
+		.virt = 0x900000UL,
+		.phys = 0x900000UL,
+		.size = 0x200000UL,
+		.attrs = PTE_BLOCK_MEMTYPE(MT_NORMAL) |
+			 PTE_BLOCK_OUTER_SHARE | PTE_MAP_NS
+	}, {
+		/* AIPS */
+		.virt = 0xB00000UL,
+		.phys = 0xB00000UL,
+		.size = 0x3f500000UL,
+		.attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRNE) |
+			 PTE_BLOCK_NON_SHARE |
+			 PTE_BLOCK_PXN | PTE_BLOCK_UXN
+	}, {
+		/* DRAM1 */
+		.virt = 0x40000000UL,
+		.phys = 0x40000000UL,
+		.size = 0xC0000000,
+		.attrs = PTE_BLOCK_MEMTYPE(MT_NORMAL) |
+#ifdef CONFIG_IMX_TRUSTY_OS
+			 PTE_BLOCK_INNER_SHARE | PTE_MAP_NS
+#else
+			 PTE_BLOCK_OUTER_SHARE | PTE_MAP_NS
+#endif
+#ifdef PHYS_SDRAM_2_SIZE
+	}, {
+		/* DRAM2 */
+		.virt = 0x100000000UL,
+		.phys = 0x100000000UL,
+		.size = 0x40000000,
+		.attrs = PTE_BLOCK_MEMTYPE(MT_NORMAL) |
+#ifdef CONFIG_IMX_TRUSTY_OS
+			 PTE_BLOCK_INNER_SHARE | PTE_MAP_NS
+#else
+			 PTE_BLOCK_OUTER_SHARE | PTE_MAP_NS
+#endif
+#endif
+	}, {
+		/* empty entrie to split table entry 5 if needed when TEEs are used */
+		0,
+	}, {
+		/* List terminator */
+		0,
+	}
+};
+
+static struct mm_region imx8m_mem_map_8gb[] = {
+	{
+		/* ROM */
+		.virt = 0x0UL,
+		.phys = 0x0UL,
+		.size = 0x100000UL,
+		.attrs = PTE_BLOCK_MEMTYPE(MT_NORMAL) |
+			 PTE_BLOCK_OUTER_SHARE
+	}, {
+		/* CAAM */
+		.virt = 0x100000UL,
+		.phys = 0x100000UL,
+		.size = 0x8000UL,
+		.attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRNE) |
+			 PTE_BLOCK_NON_SHARE |
+			 PTE_BLOCK_PXN | PTE_BLOCK_UXN
+	}, {
+		/* OCRAM_S */
+		.virt = 0x180000UL,
+		.phys = 0x180000UL,
+		.size = 0x8000UL,
+		.attrs = PTE_BLOCK_MEMTYPE(MT_NORMAL) |
+			 PTE_BLOCK_OUTER_SHARE | PTE_MAP_NS
+	}, {
+		/* TCM */
+		.virt = 0x7C0000UL,
+		.phys = 0x7C0000UL,
+		.size = 0x80000UL,
+		.attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRNE) |
+			 PTE_BLOCK_NON_SHARE |
+			 PTE_BLOCK_PXN | PTE_BLOCK_UXN | PTE_MAP_NS
+	}, {
+		/* OCRAM */
+		.virt = 0x900000UL,
+		.phys = 0x900000UL,
+		.size = 0x200000UL,
+		.attrs = PTE_BLOCK_MEMTYPE(MT_NORMAL) |
+			 PTE_BLOCK_OUTER_SHARE | PTE_MAP_NS
+	}, {
+		/* AIPS */
+		.virt = 0xB00000UL,
+		.phys = 0xB00000UL,
+		.size = 0x3f500000UL,
+		.attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRNE) |
+			 PTE_BLOCK_NON_SHARE |
+			 PTE_BLOCK_PXN | PTE_BLOCK_UXN
+	}, {
+		/* DRAM1 */
+		.virt = 0x40000000UL,
+		.phys = 0x40000000UL,
+		.size = 0x100000000,
+		.attrs = PTE_BLOCK_MEMTYPE(MT_NORMAL) |
+#ifdef CONFIG_IMX_TRUSTY_OS
+			 PTE_BLOCK_INNER_SHARE | PTE_MAP_NS
+#else
+			 PTE_BLOCK_OUTER_SHARE | PTE_MAP_NS
+#endif
+#ifdef PHYS_SDRAM_2_SIZE
+	}, {
+		/* DRAM2 */
+		.virt = 0x100000000UL,
+		.phys = 0x100000000UL,
+		.size = 0x100000000,
+		.attrs = PTE_BLOCK_MEMTYPE(MT_NORMAL) |
+#ifdef CONFIG_IMX_TRUSTY_OS
+			 PTE_BLOCK_INNER_SHARE | PTE_MAP_NS
+#else
+			 PTE_BLOCK_OUTER_SHARE | PTE_MAP_NS
+#endif
+#endif
+	}, {
+		/* empty entrie to split table entry 5 if needed when TEEs are used */
+		0,
+	}, {
+		/* List terminator */
+		0,
+	}
+};
+
+
 struct mm_region *mem_map = imx8m_mem_map;
+int mem_map_items = ARRAY_SIZE(imx8m_mem_map);
+
+#define SPL_DATA_ADDR    0x40100000
+#define SPL_DATA_MAGIC   0xDEADBEEF
+struct spl_shared_data {
+    uint32_t magic;
+    uint32_t ddr_size;
+};
+
+int debix_ddr_size = 0;
+
+__weak int board_phys_sdram_size(phys_size_t *size)
+{
+	if (!size)
+		return -EINVAL;
+
+	if (debix_ddr_size == 0 || debix_ddr_size < 0 || debix_ddr_size > 10 ) {
+		struct spl_shared_data *data = (struct spl_shared_data *)SPL_DATA_ADDR;
+		if (data->magic == SPL_DATA_MAGIC) {
+			debix_ddr_size = data->ddr_size;
+		}
+	}
+	if (debix_ddr_size > 0) {
+	//	printf("UBOOT: SPL data found and valid:\n");
+	//	printf("\n  - DDR size: %dGB\n", debix_ddr_size );
+		switch(debix_ddr_size){
+			case 8:
+				*size = 0x100000000;
+				*size += 0x100000000;
+				break;
+			case 4:
+				*size = 0xc0000000;
+				*size += 0x40000000;
+				break;
+			default:
+				*size = 0x80000000;	
+				break;
+		}
+	}else{
+	*size = PHYS_SDRAM_SIZE;
+
+#ifdef PHYS_SDRAM_2_SIZE
+	*size += PHYS_SDRAM_2_SIZE;
+#endif
+	}
+	return 0;
+}
+
 
 static unsigned int imx8m_find_dram_entry_in_mem_map(void)
 {
 	int i;
+	phys_size_t sdram_size;
+	int ret;
 
-	for (i = 0; i < ARRAY_SIZE(imx8m_mem_map); i++)
-		if (imx8m_mem_map[i].phys == CFG_SYS_SDRAM_BASE)
+	ret = board_phys_sdram_size(&sdram_size);
+	if (ret)
+		return ret;
+
+	if (sdram_size > 0x100000000) {
+		mem_map = imx8m_mem_map_8gb;
+		mem_map_items = ARRAY_SIZE(imx8m_mem_map_8gb);
+	}else if (sdram_size > 0xc0000000) {
+		mem_map = imx8m_mem_map_4gb;
+		mem_map_items = ARRAY_SIZE(imx8m_mem_map_4gb);
+	}else {
+		mem_map = imx8m_mem_map;
+		mem_map_items = ARRAY_SIZE(imx8m_mem_map);
+	}
+
+	for (i = 0; i < mem_map_items; i++)
+		if (mem_map[i].phys == CFG_SYS_SDRAM_BASE)
 			return i;
 
 	hang();	/* Entry not found, this must never happen. */
@@ -229,6 +453,23 @@ void enable_caches(void)
 	 * imx8m_mem_map for DRAM1
 	 */
 	int entry = imx8m_find_dram_entry_in_mem_map();
+	phys_size_t sdram_size;
+	int ret;
+
+	ret = board_phys_sdram_size(&sdram_size);
+	if (!ret){
+		if (sdram_size > 0x100000000) {
+			mem_map = imx8m_mem_map_8gb;
+			mem_map_items = ARRAY_SIZE(imx8m_mem_map_8gb);
+		}else if (sdram_size > 0xc0000000) {
+			mem_map = imx8m_mem_map_4gb;
+			mem_map_items = ARRAY_SIZE(imx8m_mem_map_4gb);
+		}else {
+			mem_map = imx8m_mem_map;
+			mem_map_items = ARRAY_SIZE(imx8m_mem_map);
+		}
+	}
+
 	u64 attrs = imx8m_mem_map[entry].attrs;
 
 	/* Deactivate the data cache, possibly enabled in arch_cpu_init() */
@@ -240,33 +481,20 @@ void enable_caches(void)
 	gd->arch.tlb_fillptr = 0;
 
 	while (i < CONFIG_NR_DRAM_BANKS &&
-	       entry < ARRAY_SIZE(imx8m_mem_map)) {
+	       entry < mem_map_items) {
 		if (gd->bd->bi_dram[i].start == 0)
 			break;
-		imx8m_mem_map[entry].phys = gd->bd->bi_dram[i].start;
-		imx8m_mem_map[entry].virt = gd->bd->bi_dram[i].start;
-		imx8m_mem_map[entry].size = gd->bd->bi_dram[i].size;
-		imx8m_mem_map[entry].attrs = attrs;
+		mem_map[entry].phys = gd->bd->bi_dram[i].start;
+		mem_map[entry].virt = gd->bd->bi_dram[i].start;
+		mem_map[entry].size = gd->bd->bi_dram[i].size;
+		mem_map[entry].attrs = attrs;
 		debug("Added memory mapping (%d): %llx %llx\n", entry,
-		      imx8m_mem_map[entry].phys, imx8m_mem_map[entry].size);
+		      mem_map[entry].phys, mem_map[entry].size);
 		i++; entry++;
 	}
 
 	icache_enable();
 	dcache_enable();
-}
-
-__weak int board_phys_sdram_size(phys_size_t *size)
-{
-	if (!size)
-		return -EINVAL;
-
-	*size = PHYS_SDRAM_SIZE;
-
-#ifdef PHYS_SDRAM_2_SIZE
-	*size += PHYS_SDRAM_2_SIZE;
-#endif
-	return 0;
 }
 
 int dram_init(void)
@@ -277,6 +505,17 @@ int dram_init(void)
 	ret = board_phys_sdram_size(&sdram_size);
 	if (ret)
 		return ret;
+
+	if (sdram_size > 0x100000000) {
+		mem_map = imx8m_mem_map_8gb;
+		mem_map_items = ARRAY_SIZE(imx8m_mem_map_8gb);
+	}else if (sdram_size > 0xc0000000) {
+		mem_map = imx8m_mem_map_4gb;
+		mem_map_items = ARRAY_SIZE(imx8m_mem_map_4gb);
+	}else {
+		mem_map = imx8m_mem_map;
+		mem_map_items = ARRAY_SIZE(imx8m_mem_map);
+	}
 
 	/* rom_pointer[1] contains the size of TEE occupies */
 	if (!IS_ENABLED(CONFIG_ARMV8_PSCI) && !IS_ENABLED(CONFIG_XPL_BUILD) && rom_pointer[1])

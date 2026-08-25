@@ -1108,8 +1108,10 @@ static int ci_udc_otg_phy_mode2(void *__iomem phy_base)
 		val = readl(phy_ctrl);
 		if (val & USBPHY_CTRL_OTG_ID)
 			return USB_INIT_DEVICE;
-		else
-			return USB_INIT_HOST;
+		else{
+			//John_gao 强制 device return USB_INIT_HOST;
+			return USB_INIT_DEVICE;
+		}
 	} else if (is_mx7() || is_imx8mm() || is_imx8mn() || is_imx9()) {
 		phy_status = (void __iomem *)(phy_base +
 					      USBNC_PHY_STATUS_OFFSET);

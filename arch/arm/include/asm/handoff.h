@@ -16,6 +16,13 @@
  */
 struct arch_spl_handoff {
 	ulong usable_ram_top;
+	/* i.MX8MP 自定义字段 */
+    u32 boot_device;
+    u32 reset_cause;
+    u32 ddr_type;
+    u32 pmic_voltage;
+    u8  serial_number[16];
+    u32 reserved[8];
 };
 
 #endif

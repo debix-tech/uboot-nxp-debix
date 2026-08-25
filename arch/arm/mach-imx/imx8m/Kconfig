@@ -351,9 +351,19 @@ config TARGET_IMX8MP_BEACON
 config TARGET_IMX8MP_DEBIX_MODEL_A
 	bool "Polyhex i.MX8M Plus Debix Model A SBC"
 	select IMX8MP
-	select IMX8M_LPDDR4
 	select SUPPORT_SPL
+	select IMX8M_LPDDR4
+	select FSL_CAAM
+	select FSL_BLOB
+	select ARCH_MISC_INIT
+	select SPL_CRYPTO if SPL
+	select CMD_REMOTEPROC
+	select REMOTEPROC_IMX
+	select REGMAP
+	select SYSCON
 	imply OF_UPSTREAM
+	imply BOOTSTD_FULL
+	imply BOOTSTD_BOOTCOMMAND
 
 config TARGET_IMX8MP_DH_DHCOM_PDK2
 	bool "DH electronics DHCOM Premium Developer Kit (2) i.MX8M Plus"

@@ -2,6 +2,7 @@
 /*
  * Copyright 2019 NXP
  * Copyright 2023 Gilles Talis <gilles.talis@gmail.com>
+ * Copyright 2026 Polyhex John_gao <john@polyhex.net>
  */
 
 #ifndef __IMX8MP_DEBIX_MODEL_A_H
@@ -10,34 +11,12 @@
 #include <linux/sizes.h>
 #include <linux/stringify.h>
 #include <asm/arch/imx-regs.h>
-
-#define CFG_SYS_UBOOT_BASE	(QSPI0_AMBA_BASE + CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR * 512)
+#include <env/nxp/imx_env.h>
 
 #if defined(CONFIG_CMD_NET)
 #define CFG_FEC_MXC_PHYADDR          1
 
 #endif
-
-#define BOOT_TARGET_DEVICES(func) \
-	func(MMC, mmc, 1) \
-	func(MMC, mmc, 2)
-
-#include <config_distro_bootcmd.h>
-
-/* Initial environment variables */
-#define CFG_EXTRA_ENV_SETTINGS		\
-	BOOTENV \
-	"scriptaddr=" __stringify(CONFIG_SYS_LOAD_ADDR) "\0" \
-	"kernel_addr_r=" __stringify(CONFIG_SYS_LOAD_ADDR) "\0" \
-	"image=Image\0" \
-	"console=ttymxc1,115200 earlycon=ec_imx6q,0x30890000,115200\0" \
-	"fdt_addr_r=0x43000000\0"			\
-	"boot_fdt=try\0" \
-	"fdtfile=" CONFIG_DEFAULT_FDT_FILE "\0" \
-	"initrd_addr=0x43800000\0"		\
-	"bootm_size=0x10000000\0" \
-	"mmcpart=1\0" \
-	"mmcroot=/dev/mmcblk1p2 rootwait rw\0" \
 
 /* Link Definitions */
 
@@ -48,5 +27,19 @@
 #define CFG_SYS_SDRAM_BASE		0x40000000
 #define PHYS_SDRAM			0x40000000
 #define PHYS_SDRAM_SIZE			0x80000000	/* 2 GB */
+#define PHYS_SDRAM_2                    0x100000000
+#define PHYS_SDRAM_2_SIZE		0	/* 0 GB */
+
+#define CFG_MXC_UART_BASE		UART2_BASE_ADDR
+
+#define CFG_SYS_NAND_BASE           0x20000000
+
+#ifdef CONFIG_IMX_MATTER_TRUSTY
+#define NS_ARCH_ARM64 1
+#endif
+
+#define CFG_EXTRA_ENV_SETTINGS		\
+	"debix_version=" CONFIG_Debix_VERSION "\0"                      \
+	"mmcargs=setenv bootargs ${debix_version} ${jh_clk} ${mcore_clk} console=${console} root=${mmcroot}\0 "
 
 #endif
