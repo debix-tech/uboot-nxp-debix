@@ -1,0 +1,6 @@
+i.MX95 DEBIX EMB 01 BOARD
+M:	John_gao <john_gao@polyhex.net>
+S:	Maintained
+F:	board/polyhex/imx95_debix_emb_01/
+F:	include/configs/imx95_debix_emb_01.h
+F:	configs/imx95_debix_emb_01_defconfig

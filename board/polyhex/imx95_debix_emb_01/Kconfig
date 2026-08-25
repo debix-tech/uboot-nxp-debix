@@ -1,0 +1,12 @@
+if TARGET_IMX95_DEBIX_EMB_01
+
+config SYS_BOARD
+	default "imx95_debix_emb_01"
+
+config SYS_VENDOR
+	default "polyhex"
+
+config SYS_CONFIG_NAME
+	default "imx95_debix_emb_01"
+
+endif

@@ -717,6 +717,7 @@ void imx_get_mac_from_fuse(int dev_id, unsigned char *mac)
 	int ret, num_of_macs;
 	u32 bank = 40;
 
+//printf("John_gao %s 002 \n", __func__);
 	if (is_imx94())
 		bank = 66;
 
@@ -728,7 +729,7 @@ void imx_get_mac_from_fuse(int dev_id, unsigned char *mac)
 	if (ret)
 		goto err;
 
-	num_of_macs = (val[1] >> 24) & 0xff;
+	num_of_macs = 1 ; //John_gao mac only set to mac0 = (val[1] >> 24) & 0xff;
 	if (num_of_macs <= (dev_id * 3)) {
 		printf("WARNING: no MAC address assigned for MAC%d\n", dev_id);
 		goto err;
@@ -741,7 +742,17 @@ void imx_get_mac_from_fuse(int dev_id, unsigned char *mac)
 	mac[4] = val[1] & 0xff;
 	mac[5] = (val[1] >> 8) & 0xff;
 
-	if (is_imx94()) {
+
+	//John_gao add Debix eth0 mac 
+	if (is_imx95()){
+		mac[0] = (val[1] >> 8)  & 0xff;
+		mac[1] = val[1] & 0xff;
+		mac[2] = (val[0] >> 24)  & 0xff;
+		mac[3] = (val[0] >> 16)  & 0xff;
+		mac[4] = (val[0] >> 8)  & 0xff;
+		mac[5] = val[0] & 0xff;
+
+	}else if (is_imx94()) {
 		/*
 		 * i.MX94 uses the following mac address offset list:
 		 * | No.    | Module      | Mac address user          |
@@ -767,8 +778,10 @@ void imx_get_mac_from_fuse(int dev_id, unsigned char *mac)
 			mac[5] = mac[5] + 6;
 	}
 
-	debug("%s: MAC%d: %02x.%02x.%02x.%02x.%02x.%02x\n",
-	      __func__, dev_id, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+	//debug("%s: MAC%d: %02x.%02x.%02x.%02x.%02x.%02x\n",
+	//      __func__, dev_id, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+	printf("MAC%d: %02x.%02x.%02x.%02x.%02x.%02x\n",
+	      dev_id, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 	return;
 err:
 	memset(mac, 0, 6);
